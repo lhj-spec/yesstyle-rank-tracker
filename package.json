@@ -1,0 +1,14 @@
+{
+  "name": "yesstyle-rank-tracker",
+  "version": "1.0.0",
+  "description": "YesStyle 카테고리 상품 순위 데일리 트래커",
+  "main": "tracker.js",
+  "scripts": {
+    "track": "node tracker.js",
+    "report": "node report.js"
+  },
+  "dependencies": {
+    "playwright": "^1.44.0",
+    "csv-writer": "^1.6.0"
+  }
+}

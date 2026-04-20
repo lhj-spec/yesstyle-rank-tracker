@@ -1,0 +1,8 @@
+{
+  "url": "https://www.yesstyle.com/en/beauty-beauty/list.html/bcc.15478_bpt.46?sb=136",
+  "category": "Beauty",
+  "maxPages": 3,
+  "targetProducts": [],
+  "outputDir": "data",
+  "notes": "targetProducts가 비어있으면 전체 상품 순위를 저장합니다. 특정 상품만 추적하려면 상품 ID나 이름 일부를 배열에 추가하세요. 예: [\"COSRX\", \"Some By Mi\", \"123456\"]"
+}
