@@ -74,6 +74,27 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .top-n-btn { padding: 4px 10px; font-size: 12px; border: 1px solid #dfe6e9; border-radius: 20px; cursor: pointer; background: white; color: #636e72; transition: all .15s; }
 .top-n-btn:hover { border-color: #6c5ce7; color: #6c5ce7; }
 .top-n-btn.active { background: #6c5ce7; border-color: #6c5ce7; color: white; font-weight: 600; }
+
+/* 브랜드 인사이트 */
+.brand-insight-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+.insight-card { background: #f8f9ff; border-radius: 10px; padding: 14px 16px; border: 1px solid #ebe8ff; }
+.insight-card .i-label { font-size: 11px; color: #636e72; text-transform: uppercase; letter-spacing: .4px; }
+.insight-card .i-value { font-size: 22px; font-weight: 700; color: #2d3436; margin-top: 4px; }
+.insight-card .i-sub { font-size: 11px; color: #b2bec3; margin-top: 2px; }
+.insight-card.highlight { background: linear-gradient(135deg, #f3f0ff, #e8e0ff); border-color: #c9bbff; }
+.insight-card.highlight .i-value { color: #6c5ce7; }
+.insight-card.up .i-value { color: #00b894; }
+.insight-card.down .i-value { color: #e17055; }
+.dist-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin-top: 6px; gap: 2px; }
+.dist-bar span { border-radius: 2px; transition: width .3s; }
+.dist-legend { display: flex; gap: 10px; margin-top: 5px; flex-wrap: wrap; }
+.dist-legend-item { display: flex; align-items: center; gap: 4px; font-size: 11px; color: #636e72; }
+.dist-legend-item span { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+.brand-products-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+.brand-products-table th { font-size: 11px; color: #b2bec3; text-transform: uppercase; letter-spacing: .4px; padding: 6px 10px; border-bottom: 2px solid #f5f6fa; text-align: left; }
+.brand-products-table td { padding: 9px 10px; border-bottom: 1px solid #f5f6fa; vertical-align: middle; }
+.brand-products-table tr:last-child td { border-bottom: none; }
+.brand-products-table tr:hover td { background: #fafbff; }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 
 /* 테이블 */
@@ -202,6 +223,16 @@ td.gain { color: #00b894; font-weight: 700; width: 70px; }
       </div>
     </div>
     <div class="chart-wrap"><canvas id="rankChart"></canvas></div>
+  </div>
+
+  <!-- 브랜드 인사이트 -->
+  <div class="card" id="brandInsightCard" style="display:none">
+    <div class="card-header">
+      <h2 id="brandInsightTitle">-</h2>
+      <span class="hint" id="brandInsightHint"></span>
+    </div>
+    <div class="brand-insight-grid" id="brandInsightGrid"></div>
+    <div style="margin-top:16px;" id="brandInsightProducts"></div>
   </div>
 
   <!-- TOP 순위 테이블 -->
@@ -437,19 +468,22 @@ function renderTrendChart() {
   const endDate = dates[dates.length - 1];
   const q = state.searchQuery.toLowerCase();
 
+  // 브랜드 선택 시 topN 무시하고 해당 브랜드 전체 제품 표시
+  const brandSelected = state.selectedBrands.length > 0;
   let products;
   if (q) {
     products = searchProducts().sort((a, b) =>
       (a.ranks[endDate] ?? 9999) - (b.ranks[endDate] ?? 9999)
     ).slice(0, state.topN);
+  } else if (brandSelected) {
+    products = filteredProducts(); // topN 제한 없이 전체
   } else {
     products = filteredProducts().slice(0, state.topN);
   }
 
-  const topLabel = `TOP ${state.topN}`;
   const title = q
     ? t('trendSearch', { q: state.searchQuery })
-    : state.selectedBrands.length > 0
+    : brandSelected
       ? t('trendBrand', { b: state.selectedBrands.join(', ') })
       : t('trendTop20').replace('20', state.topN);
 
@@ -482,8 +516,9 @@ function renderTrendChart() {
       interaction: { mode: 'index', intersect: false },
       scales: {
         y: {
-          reverse: true, min: 1, max: state.topN,
-          ticks: { stepSize: state.topN <= 20 ? 1 : state.topN <= 50 ? 5 : 10, callback: v => '#'+v },
+          reverse: true, min: 1,
+          max: brandSelected ? Math.max(...products.map(p => p.ranks[endDate] ?? 1), 1) + 5 : state.topN,
+          ticks: { stepSize: state.topN <= 20 && !brandSelected ? 1 : state.topN <= 50 ? 5 : 10, callback: v => '#'+v },
           title: { display: true, text: lang === 'ko' ? '순위' : 'Rank' }
         },
         x: { grid: { display: false } }
@@ -613,10 +648,117 @@ function renderStats() {
     state.selectedBrands.length > 0 ? state.selectedBrands.length + (lang === 'ko' ? '개' : '') : t('all');
 }
 
+// ── 렌더: 브랜드 인사이트 ────────────────────────────────
+function renderBrandInsight() {
+  const card = document.getElementById('brandInsightCard');
+  if (state.selectedBrands.length === 0) { card.style.display = 'none'; return; }
+  card.style.display = '';
+
+  const dates = filteredDates();
+  const endDate = dates[dates.length - 1];
+  const prevDate = dates.length >= 2 ? dates[dates.length - 2] : null;
+  const brandLabel = state.selectedBrands.join(' · ');
+
+  document.getElementById('brandInsightTitle').textContent =
+    lang === 'ko' ? `${brandLabel} 브랜드 인사이트` : `${brandLabel} Brand Insights`;
+  document.getElementById('brandInsightHint').textContent =
+    lang === 'ko' ? `기준일: ${endDate}` : `As of ${endDate}`;
+
+  // 해당 브랜드 제품 전체 (순위권 밖 포함)
+  const allBrandProds = Object.values(PRODUCT_MAP)
+    .filter(p => state.selectedBrands.includes(p.brand));
+
+  // 오늘 순위권 진입 제품
+  const rankedProds = allBrandProds
+    .filter(p => p.ranks[endDate])
+    .sort((a, b) => a.ranks[endDate] - b.ranks[endDate]);
+
+  const top10cnt  = rankedProds.filter(p => p.ranks[endDate] <= 10).length;
+  const top50cnt  = rankedProds.filter(p => p.ranks[endDate] <= 50).length;
+  const top100cnt = rankedProds.filter(p => p.ranks[endDate] <= 100).length;
+  const avgRank   = rankedProds.length ? Math.round(rankedProds.reduce((s, p) => s + p.ranks[endDate], 0) / rankedProds.length) : '-';
+  const bestProd  = rankedProds[0];
+
+  const totalReviews = rankedProds.reduce((s, p) => s + (p.reviews[endDate] || 0), 0);
+  const newReviews   = prevDate
+    ? rankedProds.reduce((s, p) => s + Math.max(0, (p.reviews[endDate] || 0) - (p.reviews[prevDate] || 0)), 0)
+    : null;
+
+  const risingCnt  = prevDate ? rankedProds.filter(p => p.ranks[prevDate] && p.ranks[endDate] < p.ranks[prevDate]).length : null;
+  const fallingCnt = prevDate ? rankedProds.filter(p => p.ranks[prevDate] && p.ranks[endDate] > p.ranks[prevDate]).length : null;
+
+  const ko = lang === 'ko';
+
+  const metrics = [
+    { label: ko ? 'TOP 100 내 제품' : 'Products in TOP 100', value: top100cnt, sub: ko ? `전체 ${allBrandProds.length}개 제품 중` : `of ${allBrandProds.length} total`, cls: 'highlight' },
+    { label: ko ? 'TOP 10 / TOP 50' : 'TOP 10 / TOP 50', value: `${top10cnt} / ${top50cnt}`, sub: ko ? '진입 제품 수' : 'products ranked', cls: '' },
+    { label: ko ? '평균 순위' : 'Avg Rank', value: avgRank ? `#${avgRank}` : '-', sub: ko ? '순위권 제품 기준' : 'ranked products', cls: '' },
+    { label: ko ? '최고 순위' : 'Best Rank', value: bestProd ? `#${bestProd.ranks[endDate]}` : '-', sub: bestProd ? bestProd.name.slice(0, 20) : '-', cls: 'highlight' },
+    { label: ko ? '총 리뷰 수' : 'Total Reviews', value: totalReviews.toLocaleString(), sub: ko ? '순위권 제품 합계' : 'across ranked products', cls: '' },
+    { label: ko ? '일 신규 리뷰' : 'Daily New Reviews', value: newReviews !== null ? `+${newReviews.toLocaleString()}` : '-', sub: ko ? '판매량 대리 지표' : 'sales proxy', cls: newReviews > 0 ? 'up' : '' },
+    { label: ko ? '순위 상승 제품' : 'Rising Products', value: risingCnt !== null ? risingCnt : '-', sub: risingCnt !== null ? (ko ? `하락 ${fallingCnt}개` : `${fallingCnt} falling`) : '-', cls: risingCnt > 0 ? 'up' : '' },
+  ];
+
+  document.getElementById('brandInsightGrid').innerHTML = metrics.map(m => `
+    <div class="insight-card ${m.cls}">
+      <div class="i-label">${m.label}</div>
+      <div class="i-value">${m.value}</div>
+      <div class="i-sub">${m.sub}</div>
+    </div>`).join('');
+
+  // 순위 분포 바
+  const dist10  = top10cnt;
+  const dist50  = top50cnt - top10cnt;
+  const dist100 = top100cnt - top50cnt;
+  const distTotal = top100cnt || 1;
+  const pct = n => Math.round(n / distTotal * 100);
+
+  const distHtml = top100cnt > 0 ? `
+    <div style="margin-top:16px;">
+      <div style="font-size:12px;font-weight:700;color:#636e72;margin-bottom:8px;">${ko ? '순위 분포' : 'Rank Distribution'}</div>
+      <div class="dist-bar">
+        <span style="width:${pct(dist10)}%;background:#6c5ce7;" title="TOP 10"></span>
+        <span style="width:${pct(dist50)}%;background:#a29bfe;" title="TOP 11-50"></span>
+        <span style="width:${pct(dist100)}%;background:#dfe6e9;" title="TOP 51-100"></span>
+      </div>
+      <div class="dist-legend">
+        <div class="dist-legend-item"><span style="background:#6c5ce7"></span>TOP 10 (${dist10})</div>
+        <div class="dist-legend-item"><span style="background:#a29bfe"></span>TOP 11–50 (${dist50})</div>
+        <div class="dist-legend-item"><span style="background:#dfe6e9"></span>TOP 51–100 (${dist100})</div>
+      </div>
+    </div>` : '';
+
+  // 브랜드 제품 상세 테이블
+  const prodRows = rankedProds.map(p => {
+    const diff = prevDate && p.ranks[prevDate] ? p.ranks[prevDate] - p.ranks[endDate] : null;
+    const rdiff = prevDate && p.reviews[prevDate] != null ? (p.reviews[endDate] || 0) - p.reviews[prevDate] : null;
+    return `<tr>
+      <td style="font-weight:700;width:54px;">#${p.ranks[endDate]}</td>
+      <td style="width:50px;">${diffBadge(diff)}</td>
+      <td><a href="https://www.yesstyle.com/en/info.html/pid.${p.id}" target="_blank" style="color:#2d3436;text-decoration:none;">${p.name}</a></td>
+      <td style="color:#0984e3;font-weight:600;width:80px;">${fmt(p)}</td>
+      <td style="color:#636e72;width:110px;">${(p.reviews[endDate] || 0).toLocaleString()}${rdiff > 0 ? `<span style="color:#00b894;font-size:11px;"> +${rdiff}</span>` : ''}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('brandInsightProducts').innerHTML = rankedProds.length ? `
+    ${distHtml}
+    <div style="font-size:12px;font-weight:700;color:#636e72;margin:16px 0 8px;">${ko ? '제품별 상세' : 'Product Details'}</div>
+    <table class="brand-products-table">
+      <thead><tr>
+        <th>${ko ? '순위' : 'Rank'}</th><th>${ko ? '변동' : 'Chg'}</th>
+        <th>${ko ? '제품명' : 'Product'}</th><th>${ko ? '가격' : 'Price'}</th>
+        <th>${ko ? '리뷰 수' : 'Reviews'}</th>
+      </tr></thead>
+      <tbody>${prodRows}</tbody>
+    </table>` : `<div class="empty">${ko ? '순위권 진입 제품 없음' : 'No products ranked'}</div>`;
+}
+
 // ── 전체 렌더 ────────────────────────────────────────────
 function render() {
   renderStats();
   renderTrendChart();
+  renderBrandInsight();
   renderRankTable();
   renderReviewTable();
   renderNewEntry();
