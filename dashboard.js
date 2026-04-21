@@ -58,6 +58,37 @@ function diffBadge(diff) {
   return '<span class="badge same">-</span>';
 }
 
+// JUMISO 제품 데이터
+const BRAND = 'JUMISO';
+const jumisoProducts = Object.values(productMap)
+  .filter(p => p.brand.toUpperCase() === BRAND)
+  .sort((a, b) => (a.ranks[latestDate] ?? 9999) - (b.ranks[latestDate] ?? 9999));
+
+const jumisoChartDatasets = jumisoProducts.map((p, i) => ({
+  label: p.name.slice(0, 35),
+  data: dates.map(d => p.ranks[d] !== undefined ? p.ranks[d] + 1 : null),
+  borderColor: ['#6c5ce7', '#fd79a8'][i % 2],
+  backgroundColor: ['#6c5ce7', '#fd79a8'][i % 2],
+  tension: 0.3,
+  pointRadius: 4,
+  spanGaps: true
+}));
+
+const jumisoRows = jumisoProducts.map(p => {
+  const diff = rankDiff(p);
+  const rdiff = reviewDiff(p);
+  const rank = p.ranks[latestDate];
+  const rankStr = rank !== undefined ? `#${rank + 1}` : '<span style="color:#b2bec3">미진입</span>';
+  return `
+    <tr>
+      <td class="rank">${rankStr}</td>
+      <td class="diff-cell">${rank !== undefined ? diffBadge(diff) : ''}</td>
+      <td class="name"><a href="https://www.yesstyle.com/en/info.html/pid.${p.id}" target="_blank">${p.name}</a></td>
+      <td class="price">${formatPrice(p)}</td>
+      <td class="reviews">${p.reviews[latestDate]?.toLocaleString() ?? '-'}${rdiff !== null && rdiff > 0 ? `<span class="review-gain"> +${rdiff}</span>` : ''}</td>
+    </tr>`;
+}).join('') || '<tr><td colspan="5" class="empty">JUMISO 제품 없음</td></tr>';
+
 // 리뷰 증가 TOP 10
 const reviewGainers = sortedProducts
   .map(p => ({ ...p, gain: reviewDiff(p) }))
@@ -178,6 +209,21 @@ const html = `<!DOCTYPE html>
   .badge.new { background: #dfe6e9; color: #636e72; }
   .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
   .empty { color: #b2bec3; text-align: center; padding: 20px; }
+  .jumiso-banner { background: linear-gradient(135deg, #6c5ce7, #a29bfe); color: white; border-radius: 10px; padding: 20px 24px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(108,92,231,.3); }
+  .jumiso-banner h2 { font-size: 15px; font-weight: 700; margin-bottom: 14px; letter-spacing: .5px; }
+  .jumiso-banner table { color: white; }
+  .jumiso-banner th { color: rgba(255,255,255,.7); border-bottom-color: rgba(255,255,255,.2); }
+  .jumiso-banner td { border-bottom-color: rgba(255,255,255,.1); }
+  .jumiso-banner td.rank { color: white; }
+  .jumiso-banner td.price { color: #ffeaa7; }
+  .jumiso-banner td.reviews { color: rgba(255,255,255,.8); }
+  .jumiso-banner .review-gain { color: #55efc4; }
+  .jumiso-banner a { color: white; }
+  .jumiso-banner .badge.up { background: rgba(255,255,255,.2); color: white; }
+  .jumiso-banner .badge.down { background: rgba(255,255,255,.15); color: #ffeaa7; }
+  .jumiso-banner .badge.same { background: rgba(255,255,255,.1); color: rgba(255,255,255,.6); }
+  .jumiso-banner .badge.new { background: rgba(255,255,255,.15); color: white; }
+  .jumiso-chart-wrap { position: relative; height: 200px; margin-top: 16px; }
   @media (max-width: 700px) { .grid-2 { grid-template-columns: 1fr; } td.brand { display: none; } }
 </style>
 </head>
@@ -187,6 +233,18 @@ const html = `<!DOCTYPE html>
   <div class="meta">카테고리: ${config.category || 'Beauty'} · 마지막 업데이트: ${latestDate} · 통화: ${currency}</div>
 </div>
 <div class="container">
+
+  <div class="jumiso-banner">
+    <h2>JUMISO 브랜드 현황</h2>
+    <table>
+      <thead><tr><th>순위</th><th>변동</th><th>제품명</th><th>가격</th><th>리뷰 수</th></tr></thead>
+      <tbody>${jumisoRows}</tbody>
+    </table>
+    ${jumisoChartDatasets.length > 0 && dates.length >= 2 ? `
+    <div class="jumiso-chart-wrap">
+      <canvas id="jumisoChart"></canvas>
+    </div>` : ''}
+  </div>
 
   <div class="stats">
     <div class="stat-card">
@@ -279,6 +337,34 @@ new Chart(ctx, {
     }
   }
 });
+${jumisoChartDatasets.length > 0 && dates.length >= 2 ? `
+const jumisoCtx = document.getElementById('jumisoChart').getContext('2d');
+new Chart(jumisoCtx, {
+  type: 'line',
+  data: {
+    labels: ${JSON.stringify(dates)},
+    datasets: ${JSON.stringify(jumisoChartDatasets)}
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    scales: {
+      y: {
+        reverse: true,
+        min: 1,
+        ticks: { stepSize: 10, callback: v => '#' + v, color: 'rgba(255,255,255,.7)' },
+        grid: { color: 'rgba(255,255,255,.1)' },
+        title: { display: true, text: '순위', color: 'rgba(255,255,255,.7)' }
+      },
+      x: { grid: { display: false }, ticks: { color: 'rgba(255,255,255,.7)' } }
+    },
+    plugins: {
+      legend: { labels: { color: 'white', font: { size: 12 }, boxWidth: 12 } },
+      tooltip: { callbacks: { label: ctx => \` \${ctx.dataset.label}: #\${ctx.raw}\` } }
+    }
+  }
+});` : ''}
 </script>
 </body>
 </html>`;
