@@ -4,7 +4,7 @@ const config = require('./config.json');
 
 const outputDir = path.resolve(__dirname, config.outputDir);
 const historyFile = path.join(outputDir, 'history.json');
-const dashboardDir = path.resolve(__dirname, 'dashboard');
+const dashboardDir = path.resolve(__dirname, 'docs');
 
 if (!fs.existsSync(historyFile)) {
   console.error('히스토리 파일이 없습니다. tracker.js를 먼저 실행하세요.');
