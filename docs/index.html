@@ -69,7 +69,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
 .card-header h2 { font-size: 14px; font-weight: 700; color: #2d3436; }
 .card-header .hint { font-size: 11px; color: #b2bec3; }
-.chart-wrap { height: 340px; }
+.chart-wrap { height: 520px; }
+.top-n-btns { display: flex; gap: 4px; }
+.top-n-btn { padding: 4px 10px; font-size: 12px; border: 1px solid #dfe6e9; border-radius: 20px; cursor: pointer; background: white; color: #636e72; transition: all .15s; }
+.top-n-btn:hover { border-color: #6c5ce7; color: #6c5ce7; }
+.top-n-btn.active { background: #6c5ce7; border-color: #6c5ce7; color: white; font-weight: 600; }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 
 /* 테이블 */
@@ -187,7 +191,15 @@ td.gain { color: #00b894; font-weight: 700; width: 70px; }
   <div class="card">
     <div class="card-header">
       <h2 id="trendTitle">-</h2>
-      <span class="hint" id="trendHint"></span>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div class="top-n-btns" id="topNBtns">
+          <button class="top-n-btn active" data-n="20">TOP 20</button>
+          <button class="top-n-btn" data-n="30">TOP 30</button>
+          <button class="top-n-btn" data-n="50">TOP 50</button>
+          <button class="top-n-btn" data-n="100">TOP 100</button>
+        </div>
+        <span class="hint" id="trendHint"></span>
+      </div>
     </div>
     <div class="chart-wrap"><canvas id="rankChart"></canvas></div>
   </div>
@@ -309,7 +321,8 @@ let state = {
   dateFrom: ALL_DATES[0],
   dateTo: LATEST_DATE,
   selectedBrands: [],   // 빈 배열 = 전체
-  searchQuery: ''
+  searchQuery: '',
+  topN: 20
 };
 
 // ── 차트 인스턴스 ─────────────────────────────────────────
@@ -426,19 +439,19 @@ function renderTrendChart() {
 
   let products;
   if (q) {
-    // 검색 결과 제품 (순위권 밖 포함)
     products = searchProducts().sort((a, b) =>
       (a.ranks[endDate] ?? 9999) - (b.ranks[endDate] ?? 9999)
-    ).slice(0, 20);
+    ).slice(0, state.topN);
   } else {
-    products = filteredProducts().slice(0, 20);
+    products = filteredProducts().slice(0, state.topN);
   }
 
+  const topLabel = `TOP ${state.topN}`;
   const title = q
     ? t('trendSearch', { q: state.searchQuery })
     : state.selectedBrands.length > 0
       ? t('trendBrand', { b: state.selectedBrands.join(', ') })
-      : t('trendTop20');
+      : t('trendTop20').replace('20', state.topN);
 
   document.getElementById('trendTitle').textContent = title;
   document.getElementById('trendHint').textContent = `${dates[0]} ~ ${dates[dates.length-1]}`;
@@ -468,7 +481,11 @@ function renderTrendChart() {
       responsive: true, maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
       scales: {
-        y: { reverse: true, min: 1, ticks: { stepSize: 1, callback: v => '#'+v }, title: { display: true, text: '순위' } },
+        y: {
+          reverse: true, min: 1, max: state.topN,
+          ticks: { stepSize: state.topN <= 20 ? 1 : state.topN <= 50 ? 5 : 10, callback: v => '#'+v },
+          title: { display: true, text: lang === 'ko' ? '순위' : 'Rank' }
+        },
         x: { grid: { display: false } }
       },
       plugins: {
@@ -713,6 +730,15 @@ function initResetBtn() {
     render();
   });
 }
+
+// ── TOP N 버튼 ───────────────────────────────────────────
+document.getElementById('topNBtns').addEventListener('click', e => {
+  const btn = e.target.closest('.top-n-btn');
+  if (!btn) return;
+  state.topN = parseInt(btn.dataset.n);
+  document.querySelectorAll('.top-n-btn').forEach(b => b.classList.toggle('active', b === btn));
+  renderTrendChart();
+});
 
 // ── 언어 토글 ────────────────────────────────────────────
 document.querySelectorAll('.lang-btn').forEach(btn => {
