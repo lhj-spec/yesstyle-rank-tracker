@@ -544,14 +544,14 @@ function renderRankTable() {
       (a.ranks[endDate] ?? 9999) - (b.ranks[endDate] ?? 9999)
     );
   } else {
-    products = filteredProducts();
+    // 브랜드 필터 무관하게 항상 전체 TOP 50 표시
+    products = Object.values(PRODUCT_MAP).filter(p => p.ranks[endDate] !== undefined)
+      .sort((a, b) => a.ranks[endDate] - b.ranks[endDate]);
   }
 
   document.getElementById('tableTitle').textContent = q
     ? t('searchResult', { q: state.searchQuery })
-    : state.selectedBrands.length > 0
-      ? t('brandRank', { b: state.selectedBrands.join(', ') })
-      : t('latestRank');
+    : t('latestRank');
   document.getElementById('tableHint').textContent = `${t('baseDate')}: ${endDate}`;
 
   const display = products.slice(0, 50);
