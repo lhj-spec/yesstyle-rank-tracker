@@ -48,7 +48,10 @@ async function crawlPage(page, pageNum) {
       // 가격: itemSellPrice가 실제 표시 가격, itemPrice는 원가
       const sellPriceEl = el.querySelector('[class*="itemSellPrice"]');
       const priceEl = el.querySelector('[class*="itemPrice"]');
-      const price = (sellPriceEl || priceEl)?.textContent.replace(/\s+/g, ' ').trim() || '';
+      const priceRaw = (sellPriceEl || priceEl)?.textContent.replace(/\s+/g, ' ').trim() || '';
+      const currency = priceRaw.includes('$') ? 'USD' : priceRaw.includes('₩') ? 'KRW' : 'UNKNOWN';
+      const priceNum = parseFloat(priceRaw.replace(/[^0-9.]/g, '').replace(/,/g, '')) || 0;
+      const price = priceRaw;
 
       // 카테고리 베스트셀러 랭크 배지 (있을 경우)
       const badgeEl = el.querySelector('[class*="categoryBestsellerRankBadge"], [class*="RankBadge"]');
@@ -63,7 +66,7 @@ async function crawlPage(page, pageNum) {
       const img = imgEl ? (imgEl.src || imgEl.getAttribute('data-src') || '') : '';
 
       if (name || id) {
-        items.push({ rank, id, name, brand, price, badge, reviewCount, link, img });
+        items.push({ rank, id, name, brand, price, priceNum, currency, badge, reviewCount, link, img });
       }
     });
 
@@ -90,6 +93,13 @@ async function run() {
     viewport: { width: 1280, height: 800 },
     locale: 'en-US'
   });
+
+  await context.addCookies([{
+    name: 'ys_currency',
+    value: 'USD',
+    domain: '.yesstyle.com',
+    path: '/'
+  }]);
 
   const page = await context.newPage();
   page.setDefaultTimeout(30000);
@@ -148,9 +158,9 @@ async function run() {
 
   // CSV 저장
   const csvFile = path.join(outputDir, `${TODAY}.csv`);
-  const csvHeader = 'date,rank,id,brand,name,price,badge,reviewCount,link\n';
+  const csvHeader = 'date,rank,id,brand,name,currency,priceNum,price,badge,reviewCount,link\n';
   const csvRows = tracked.map(p =>
-    `"${TODAY}","${p.rank}","${p.id}","${(p.brand||'').replace(/"/g, '""')}","${(p.name||'').replace(/"/g, '""')}","${p.price||''}","${p.badge||''}","${p.reviewCount||0}","${p.link||''}"`
+    `"${TODAY}","${p.rank}","${p.id}","${(p.brand||'').replace(/"/g, '""')}","${(p.name||'').replace(/"/g, '""')}","${p.currency||''}","${p.priceNum||0}","${p.price||''}","${p.badge||''}","${p.reviewCount||0}","${p.link||''}"`
   ).join('\n');
   fs.writeFileSync(csvFile, csvHeader + csvRows, 'utf-8');
   console.log(`CSV 저장: ${csvFile}`);
@@ -164,7 +174,8 @@ async function run() {
   // 순위 변동 출력
   printRankChanges(history, tracked);
 
-  console.log(`\n총 ${tracked.length}개 상품 순위 기록 완료\n`);
+  const detectedCurrency = tracked[0]?.currency || 'UNKNOWN';
+  console.log(`\n통화: ${detectedCurrency} | 총 ${tracked.length}개 상품 순위 기록 완료\n`);
 }
 
 function printRankChanges(history, today) {
@@ -188,7 +199,7 @@ function printRankChanges(history, today) {
   const prevReviewMap = {};
   (prev.products || []).forEach(p => {
     const key = p.id || p.name;
-    if (key) prevReviewMap[key] = p.reviewCount || 0;
+    if (key && p.reviewCount != null) prevReviewMap[key] = p.reviewCount;
   });
 
   let changeCount = 0;
