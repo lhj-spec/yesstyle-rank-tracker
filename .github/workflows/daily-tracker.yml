@@ -8,6 +8,10 @@ on:
 jobs:
   track:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
 
     steps:
       - name: Checkout
@@ -28,10 +32,13 @@ jobs:
       - name: Run tracker
         run: node tracker.js
 
+      - name: Generate dashboard
+        run: node dashboard.js
+
       - name: Commit results
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/
+          git add data/ dashboard/
           git diff --staged --quiet || git commit -m "track: $(date '+%Y-%m-%d') 순위 업데이트"
           git push

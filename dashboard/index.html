@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>YesStyle 순위 대시보드</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f6fa; color: #2d3436; }
+  .header { background: #2d3436; color: white; padding: 24px 32px; }
+  .header h1 { font-size: 22px; font-weight: 600; }
+  .header .meta { font-size: 13px; color: #b2bec3; margin-top: 6px; }
+  .container { max-width: 1200px; margin: 0 auto; padding: 24px 16px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .stat-card { background: white; border-radius: 10px; padding: 16px 20px; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+  .stat-card .label { font-size: 12px; color: #636e72; text-transform: uppercase; letter-spacing: .5px; }
+  .stat-card .value { font-size: 26px; font-weight: 700; margin-top: 4px; color: #2d3436; }
+  .stat-card .sub { font-size: 12px; color: #b2bec3; margin-top: 2px; }
+  .card { background: white; border-radius: 10px; padding: 20px 24px; box-shadow: 0 1px 4px rgba(0,0,0,.06); margin-bottom: 20px; }
+  .card h2 { font-size: 15px; font-weight: 600; margin-bottom: 16px; color: #2d3436; }
+  .chart-wrap { position: relative; height: 340px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: #636e72; padding: 8px 10px; border-bottom: 2px solid #f0f0f0; }
+  td { padding: 10px 10px; border-bottom: 1px solid #f5f6fa; vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #f9f9fb; }
+  td.rank { font-weight: 700; font-size: 15px; width: 56px; }
+  td.brand { color: #636e72; font-size: 12px; width: 120px; }
+  td.name a { color: #2d3436; text-decoration: none; }
+  td.name a:hover { color: #0984e3; text-decoration: underline; }
+  td.price { color: #0984e3; font-weight: 600; width: 90px; }
+  td.reviews { color: #636e72; width: 110px; }
+  td.gain { color: #00b894; font-weight: 700; width: 80px; }
+  td.diff-cell { width: 52px; }
+  .review-gain { color: #00b894; font-size: 11px; margin-left: 4px; }
+  .badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 4px; }
+  .badge.up { background: #d4f5e9; color: #00b894; }
+  .badge.down { background: #ffeaa7; color: #e17055; }
+  .badge.same { background: #f0f0f0; color: #b2bec3; }
+  .badge.new { background: #dfe6e9; color: #636e72; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .empty { color: #b2bec3; text-align: center; padding: 20px; }
+  @media (max-width: 700px) { .grid-2 { grid-template-columns: 1fr; } td.brand { display: none; } }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>YesStyle 순위 대시보드</h1>
+  <div class="meta">카테고리: Beauty · 마지막 업데이트: 2026-04-21 · 통화: KRW</div>
+</div>
+<div class="container">
+
+  <div class="stats">
+    <div class="stat-card">
+      <div class="label">추적 제품 수</div>
+      <div class="value">300</div>
+      <div class="sub">오늘 크롤링</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">누적 일수</div>
+      <div class="value">2</div>
+      <div class="sub">2026-04-20 ~</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">1위 제품</div>
+      <div class="value" style="font-size:14px;margin-top:8px;">Relief Sun: Rice +</div>
+      <div class="sub">Beauty of Joseon</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">오늘 신규 진입</div>
+      <div class="value">10</div>
+      <div class="sub">이탈 10개</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>상위 20위 순위 트렌드</h2>
+    <div class="chart-wrap">
+      <canvas id="rankChart"></canvas>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>오늘의 TOP 10</h2>
+    <table>
+      <thead><tr><th>순위</th><th>변동</th><th>브랜드</th><th>제품명</th><th>가격</th><th>리뷰 수</th></tr></thead>
+      <tbody>
+    <tr>
+      <td class="rank">#1</td>
+      <td class="diff-cell"><span class="badge same">-</span></td>
+      <td class="brand">Beauty of Joseon</td>
+      <td class="name"><a href="https://www.yesstyle.com/en/info.html/pid.1107744417" target="_blank">Relief Sun: Rice + Probiotics</a></td>
+      <td class="price">₩25,856</td>
+      <td class="reviews">25,492</td>
+    </tr>
+    <tr>
+      <td class="rank">#2</td>
+      <td class="diff-cell"><span class="badge same">-</span></td>
+      <td class="brand">celimax</td>
+      <td class="name"><a href="https://www.yesstyle.com/en/info.html/pid.1130946339" target="_blank">The Vita-A Retinal Shot Tightening Booster</a></td>
+      <td class="price">₩19,230</td>
+      <td class="reviews">9,785</td>
+    </tr>
+    <tr>
+      <td class="rank">#3</td>
+      <td class="diff-cell"><span class="badge same">-</span></td>
+      <td class="brand">Dr. Althea</td>
+      <td class="name"><a href="https://www.yesstyle.com/en/info.html/pid.1124698946" target="_blank">345 Relief Cream</a></td>
+      <td class="price">₩43,632</td>
+      <td class="reviews">23,338</td>
+    </tr>
+    <tr>
+      <td class="rank">#4</td>
+      <td class="diff-cell"><span class="badge same">-</span></td>
+      <td class="brand">SKIN1004</td>
+      <td class="name"><a href="https://www.yesstyle.com/en/info.html/pid.1121503383" target="_blank">Madagascar Centella Hyalu-Cica Water-Fit Sun Serum Twin Pack</a></td>
+      <td class="price">₩40,723</td>
+      <td class="reviews">23,427</td>
+    </tr>
+    <tr>
+      <td class="rank">#5</td>
+      <td class="diff-cell"><span class="badge same">-</span></td>
+      <td class="brand">SKIN1004</td>
+      <td class="name"><a href="https://www.yesstyle.com/en/info.html/pid.1113888108" target="_blank">Madagascar Centella Hyalu-Cica Water-Fit Sun Serum</a></td>
+      <td class="price">₩24,240</td>
+      <td class="reviews">29,158</td>
+    </tr>
+    <tr>
+      <td class="rank">#6</td>
+      <td class="diff-cell"><span class="badge same">-</span></td>
+      <td class="brand">Beauty of Joseon</td>
+      <td class="name"><a href="https://www.yesstyle.com/en/info.html/pid.1130222654" target="_blank">Relief Sun Aqua-fresh</a></td>
+      <td class="price">₩29,088</td>
+      <td class="reviews">6,301</td>
+    </tr>
+    <tr>
+      <td class="rank">#7</td>
+      <td class="diff-cell"><span class="badge same">-</span></td>
+      <td class="brand">APLB</td>
+      <td class="name"><a href="https://www.yesstyle.com/en/info.html/pid.1124536886" target="_blank">Glutathione Niacinamide Sheet Mask</a></td>
+      <td class="price">₩6,816</td>
+      <td class="reviews">10,139</td>
+    </tr>
+    <tr>
+      <td class="rank">#8</td>
+      <td class="diff-cell"><span class="badge up">▲1</span></td>
+      <td class="brand">Arencia</td>
+      <td class="name"><a href="https://www.yesstyle.com/en/info.html/pid.1136616200" target="_blank">Vitamin C Booster Shot</a></td>
+      <td class="price">₩21,654</td>
+      <td class="reviews">1,323</td>
+    </tr>
+    <tr>
+      <td class="rank">#9</td>
+      <td class="diff-cell"><span class="badge down">▼1</span></td>
+      <td class="brand">Purito SEOUL</td>
+      <td class="name"><a href="https://www.yesstyle.com/en/info.html/pid.1129733663" target="_blank">Mighty Bamboo Panthenol Cream</a></td>
+      <td class="price">₩28,118</td>
+      <td class="reviews">15,423</td>
+    </tr>
+    <tr>
+      <td class="rank">#10</td>
+      <td class="diff-cell"><span class="badge same">-</span></td>
+      <td class="brand">Anua</td>
+      <td class="name"><a href="https://www.yesstyle.com/en/info.html/pid.1132449411" target="_blank">Azelaic Acid 10 Hyaluron Redness Soothing Serum</a></td>
+      <td class="price">₩32,482</td>
+      <td class="reviews">7,472</td>
+    </tr></tbody>
+    </table>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <h2>리뷰 증가 TOP 10 (판매량 지표)</h2>
+      <table>
+        <thead><tr><th>순위</th><th>브랜드</th><th>제품명</th><th>총 리뷰</th><th>+신규</th></tr></thead>
+        <tbody><tr><td colspan="5" class="empty">데이터 부족 (2일 이상 필요)</td></tr></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h2>오늘 신규 진입</h2>
+      <table>
+        <thead><tr><th>순위</th><th>브랜드</th><th>제품명</th><th>가격</th></tr></thead>
+        <tbody>
+  <tr>
+    <td class="rank">#188</td>
+    <td class="brand">Anua</td>
+    <td class="name"><a href="https://www.yesstyle.com/en/info.html/pid.1131506971" target="_blank">3 Ceramide Panthenol Moisture Barrier Cream</a></td>
+    <td class="price">₩30,219</td>
+  </tr>
+  <tr>
+    <td class="rank">#191</td>
+    <td class="brand">Abib</td>
+    <td class="name"><a href="https://www.yesstyle.com/en/info.html/pid.1115954507" target="_blank">Collagen Gel Mask - 3 Types</a></td>
+    <td class="price">₩9,696</td>
+  </tr>
+  <tr>
+    <td class="rank">#195</td>
+    <td class="brand">Abib</td>
+    <td class="name"><a href="https://www.yesstyle.com/en/info.html/pid.1137362924" target="_blank">PDRN Volume Fill-it Booster Crème 2.5 Tube</a></td>
+    <td class="price">₩25,048</td>
+  </tr>
+  <tr>
+    <td class="rank">#196</td>
+    <td class="brand">haruharu wonder</td>
+    <td class="name"><a href="https://www.yesstyle.com/en/info.html/pid.1136761022" target="_blank">Black Rice Probiotics Barrier 2% NAD+ Serum Mist</a></td>
+    <td class="price">₩29,250</td>
+  </tr>
+  <tr>
+    <td class="rank">#197</td>
+    <td class="brand">APLB</td>
+    <td class="name"><a href="https://www.yesstyle.com/en/info.html/pid.1122949318" target="_blank">Glutathione Niacinamide Body Wash</a></td>
+    <td class="price">₩26,842</td>
+  </tr>
+  <tr>
+    <td class="rank">#198</td>
+    <td class="brand">SKIN1004</td>
+    <td class="name"><a href="https://www.yesstyle.com/en/info.html/pid.1137150375" target="_blank">Madagascar Centella Ampoule Foam Bundle Set</a></td>
+    <td class="price">₩51,066</td>
+  </tr>
+  <tr>
+    <td class="rank">#200</td>
+    <td class="brand">SOME BY MI</td>
+    <td class="name"><a href="https://www.yesstyle.com/en/info.html/pid.1127442803" target="_blank">AHA, BHA, PHA 30 Days Miracle Acne Clear Body Cleanser</a></td>
+    <td class="price">₩48,157</td>
+  </tr>
+  <tr>
+    <td class="rank">#201</td>
+    <td class="brand">SKIN1004</td>
+    <td class="name"><a href="https://www.yesstyle.com/en/info.html/pid.1120450258" target="_blank">Madagascar Centella Ampoule Kit</a></td>
+    <td class="price">₩47,995</td>
+  </tr>
+  <tr>
+    <td class="rank">#202</td>
+    <td class="brand">Shiseido</td>
+    <td class="name"><a href="https://www.yesstyle.com/en/info.html/pid.1136484843" target="_blank">Fino Premium Touch Hair Oil</a></td>
+    <td class="price">₩25,533</td>
+  </tr>
+  <tr>
+    <td class="rank">#203</td>
+    <td class="brand">Cos De BAHA</td>
+    <td class="name"><a href="https://www.yesstyle.com/en/info.html/pid.1133162006" target="_blank">AZ20 Cream</a></td>
+    <td class="price">₩24,725</td>
+  </tr></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+<script>
+const ctx = document.getElementById('rankChart').getContext('2d');
+new Chart(ctx, {
+  type: 'line',
+  data: {
+    labels: ["2026-04-20","2026-04-21"],
+    datasets: [{"label":"Beauty of Joseon Relief Sun: R","data":[1,1],"borderColor":"#4e79a7","backgroundColor":"#4e79a7","tension":0.3,"pointRadius":4,"spanGaps":true},{"label":"celimax The Vita-A Retinal Sho","data":[2,2],"borderColor":"#f28e2b","backgroundColor":"#f28e2b","tension":0.3,"pointRadius":4,"spanGaps":true},{"label":"Dr. Althea 345 Relief Cream","data":[3,3],"borderColor":"#e15759","backgroundColor":"#e15759","tension":0.3,"pointRadius":4,"spanGaps":true},{"label":"SKIN1004 Madagascar Centella H","data":[4,4],"borderColor":"#76b7b2","backgroundColor":"#76b7b2","tension":0.3,"pointRadius":4,"spanGaps":true},{"label":"SKIN1004 Madagascar Centella H","data":[5,5],"borderColor":"#59a14f","backgroundColor":"#59a14f","tension":0.3,"pointRadius":4,"spanGaps":true},{"label":"Beauty of Joseon Relief Sun Aq","data":[6,6],"borderColor":"#edc948","backgroundColor":"#edc948","tension":0.3,"pointRadius":4,"spanGaps":true},{"label":"APLB Glutathione Niacinamide S","data":[7,7],"borderColor":"#b07aa1","backgroundColor":"#b07aa1","tension":0.3,"pointRadius":4,"spanGaps":true},{"label":"Arencia Vitamin C Booster Shot","data":[9,8],"borderColor":"#ff9da7","backgroundColor":"#ff9da7","tension":0.3,"pointRadius":4,"spanGaps":true},{"label":"Purito SEOUL Mighty Bamboo Pan","data":[8,9],"borderColor":"#9c755f","backgroundColor":"#9c755f","tension":0.3,"pointRadius":4,"spanGaps":true},{"label":"Anua Azelaic Acid 10 Hyaluron ","data":[10,10],"borderColor":"#bab0ac","backgroundColor":"#bab0ac","tension":0.3,"pointRadius":4,"spanGaps":true},{"label":"Purito SEOUL Oat-In Calming Ge","data":[11,11],"borderColor":"#4e79a7","backgroundColor":"#4e79a7","tension":0.3,"pointRadius":4,"spanGaps":true},{"label":"APLB Collagen EGF Peptide Shee","data":[12,12],"borderColor":"#f28e2b","backgroundColor":"#f28e2b","tension":0.3,"pointRadius":4,"spanGaps":true},{"label":"SKIN1004 Madagascar Centella L","data":[13,13],"borderColor":"#e15759","backgroundColor":"#e15759","tension":0.3,"pointRadius":4,"spanGaps":true},{"label":"Mary&May Tranexamic Acid + Glu","data":[14,14],"borderColor":"#76b7b2","backgroundColor":"#76b7b2","tension":0.3,"pointRadius":4,"spanGaps":true},{"label":"ROUND LAB Birch Juice Moisturi","data":[15,15],"borderColor":"#59a14f","backgroundColor":"#59a14f","tension":0.3,"pointRadius":4,"spanGaps":true},{"label":"Dr. Althea 345 Relief Cream Mi","data":[16,16],"borderColor":"#edc948","backgroundColor":"#edc948","tension":0.3,"pointRadius":4,"spanGaps":true},{"label":"SKIN1004 Madagascar Centella A","data":[17,17],"borderColor":"#b07aa1","backgroundColor":"#b07aa1","tension":0.3,"pointRadius":4,"spanGaps":true},{"label":"SKIN1004 Madagascar Centella P","data":[18,18],"borderColor":"#ff9da7","backgroundColor":"#ff9da7","tension":0.3,"pointRadius":4,"spanGaps":true},{"label":"EQQUALBERRY Vitamin Illuminati","data":[19,19],"borderColor":"#9c755f","backgroundColor":"#9c755f","tension":0.3,"pointRadius":4,"spanGaps":true},{"label":"KSECRET SEOUL 1988 Serum : Ret","data":[20,20],"borderColor":"#bab0ac","backgroundColor":"#bab0ac","tension":0.3,"pointRadius":4,"spanGaps":true}]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    scales: {
+      y: {
+        reverse: true,
+        min: 1,
+        max: 20,
+        ticks: { stepSize: 1, callback: v => '#' + v },
+        title: { display: true, text: '순위' }
+      },
+      x: { grid: { display: false } }
+    },
+    plugins: {
+      legend: {
+        position: 'right',
+        labels: { font: { size: 11 }, boxWidth: 12, padding: 8 }
+      },
+      tooltip: {
+        callbacks: {
+          label: ctx => ` ${ctx.dataset.label}: #${ctx.raw}`
+        }
+      }
+    }
+  }
+});
+</script>
+</body>
+</html>
