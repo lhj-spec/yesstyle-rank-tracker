@@ -10,161 +10,33 @@ if (!fs.existsSync(historyFile)) {
   console.error('히스토리 파일이 없습니다. tracker.js를 먼저 실행하세요.');
   process.exit(1);
 }
-
 if (!fs.existsSync(dashboardDir)) fs.mkdirSync(dashboardDir, { recursive: true });
 
 const history = JSON.parse(fs.readFileSync(historyFile, 'utf-8'))
   .sort((a, b) => a.date.localeCompare(b.date));
 
-const dates = history.map(h => h.date);
-const latest = history[history.length - 1];
-const prev = history.length >= 2 ? history[history.length - 2] : null;
+const latestDate = history[history.length - 1].date;
+const currency = history[history.length - 1].products?.[0]?.currency || 'USD';
 
-// 제품별 히스토리 빌드
+// 제품별 전체 히스토리 빌드 (클라이언트에 내장할 데이터)
 const productMap = {};
 history.forEach(day => {
   (day.products || []).forEach(p => {
     const key = p.id || p.name;
     if (!key) return;
-    if (!productMap[key]) productMap[key] = { id: p.id, name: p.name, brand: p.brand, ranks: {}, reviews: {}, prices: {} };
-    productMap[key].ranks[day.date] = p.rank;
+    if (!productMap[key]) productMap[key] = {
+      id: p.id, name: p.name, brand: p.brand,
+      ranks: {}, reviews: {}, prices: {}
+    };
+    productMap[key].ranks[day.date] = p.rank + 1; // 1-based
     if (p.reviewCount != null) productMap[key].reviews[day.date] = p.reviewCount;
     if (p.priceNum) productMap[key].prices[day.date] = { num: p.priceNum, currency: p.currency };
   });
 });
 
-// 최신 순위 기준 정렬된 상품 목록
-const latestDate = latest.date;
-const prevDate = prev ? prev.date : null;
-const sortedProducts = Object.values(productMap)
-  .filter(p => p.ranks[latestDate] !== undefined)
-  .sort((a, b) => a.ranks[latestDate] - b.ranks[latestDate]);
-
-// 순위 변동 계산
-function rankDiff(p) {
-  if (!prevDate || p.ranks[prevDate] === undefined) return null;
-  return p.ranks[prevDate] - p.ranks[latestDate];
-}
-
-function reviewDiff(p) {
-  if (!prevDate || p.reviews[prevDate] === undefined || p.reviews[latestDate] === undefined) return null;
-  return p.reviews[latestDate] - p.reviews[prevDate];
-}
-
-function diffBadge(diff) {
-  if (diff === null) return '<span class="badge new">신규</span>';
-  if (diff > 0) return `<span class="badge up">▲${diff}</span>`;
-  if (diff < 0) return `<span class="badge down">▼${Math.abs(diff)}</span>`;
-  return '<span class="badge same">-</span>';
-}
-
-// JUMISO 제품 데이터
-const BRAND = 'JUMISO';
-const jumisoProducts = Object.values(productMap)
-  .filter(p => p.brand.toUpperCase() === BRAND)
-  .sort((a, b) => (a.ranks[latestDate] ?? 9999) - (b.ranks[latestDate] ?? 9999));
-
-const jumisoChartDatasets = jumisoProducts.map((p, i) => ({
-  label: p.name.slice(0, 35),
-  data: dates.map(d => p.ranks[d] !== undefined ? p.ranks[d] + 1 : null),
-  borderColor: ['#6c5ce7', '#fd79a8'][i % 2],
-  backgroundColor: ['#6c5ce7', '#fd79a8'][i % 2],
-  tension: 0.3,
-  pointRadius: 4,
-  spanGaps: true
-}));
-
-const jumisoRows = jumisoProducts.map(p => {
-  const diff = rankDiff(p);
-  const rdiff = reviewDiff(p);
-  const rank = p.ranks[latestDate];
-  const rankStr = rank !== undefined ? `#${rank + 1}` : '<span style="color:#b2bec3">미진입</span>';
-  return `
-    <tr>
-      <td class="rank">${rankStr}</td>
-      <td class="diff-cell">${rank !== undefined ? diffBadge(diff) : ''}</td>
-      <td class="name"><a href="https://www.yesstyle.com/en/info.html/pid.${p.id}" target="_blank">${p.name}</a></td>
-      <td class="price">${formatPrice(p)}</td>
-      <td class="reviews">${p.reviews[latestDate]?.toLocaleString() ?? '-'}${rdiff !== null && rdiff > 0 ? `<span class="review-gain"> +${rdiff}</span>` : ''}</td>
-    </tr>`;
-}).join('') || '<tr><td colspan="5" class="empty">JUMISO 제품 없음</td></tr>';
-
-// 리뷰 증가 TOP 10
-const reviewGainers = sortedProducts
-  .map(p => ({ ...p, gain: reviewDiff(p) }))
-  .filter(p => p.gain !== null && p.gain > 0)
-  .sort((a, b) => b.gain - a.gain)
-  .slice(0, 10);
-
-// 신규 진입 / 이탈
-const newEntries = sortedProducts.filter(p => !prevDate || p.ranks[prevDate] === undefined).slice(0, 10);
-const dropped = prevDate
-  ? Object.values(productMap).filter(p => p.ranks[prevDate] !== undefined && p.ranks[latestDate] === undefined).slice(0, 10)
-  : [];
-
-// 차트 데이터 — 상위 20개 제품 순위 트렌드
-const top20 = sortedProducts.slice(0, 20);
-const chartColors = [
-  '#4e79a7','#f28e2b','#e15759','#76b7b2','#59a14f',
-  '#edc948','#b07aa1','#ff9da7','#9c755f','#bab0ac',
-  '#4e79a7','#f28e2b','#e15759','#76b7b2','#59a14f',
-  '#edc948','#b07aa1','#ff9da7','#9c755f','#bab0ac'
-];
-const chartDatasets = top20.map((p, i) => ({
-  label: `${p.brand} ${p.name}`.slice(0, 30),
-  data: dates.map(d => p.ranks[d] !== undefined ? p.ranks[d] + 1 : null),
-  borderColor: chartColors[i],
-  backgroundColor: chartColors[i],
-  tension: 0.3,
-  pointRadius: dates.length <= 7 ? 4 : 2,
-  spanGaps: true
-}));
-
-// 통화 표시
-const currency = latest.products?.[0]?.currency || 'USD';
-const currencySymbol = currency === 'KRW' ? '₩' : '$';
-
-function formatPrice(p) {
-  const pd = p.prices[latestDate];
-  if (!pd) return '-';
-  return `${pd.currency === 'KRW' ? '₩' : '$'}${pd.num.toLocaleString()}`;
-}
-
-// TOP 10 테이블 행 생성
-const top10Rows = sortedProducts.slice(0, 10).map(p => {
-  const diff = rankDiff(p);
-  const rdiff = reviewDiff(p);
-  return `
-    <tr>
-      <td class="rank">#${p.ranks[latestDate] + 1}</td>
-      <td class="diff-cell">${diffBadge(diff)}</td>
-      <td class="brand">${p.brand}</td>
-      <td class="name"><a href="https://www.yesstyle.com/en/info.html/pid.${p.id}" target="_blank">${p.name}</a></td>
-      <td class="price">${formatPrice(p)}</td>
-      <td class="reviews">${p.reviews[latestDate]?.toLocaleString() ?? '-'}${rdiff !== null && rdiff > 0 ? `<span class="review-gain"> +${rdiff}</span>` : ''}</td>
-    </tr>`;
-}).join('');
-
-// 리뷰 증가 TOP 10 행
-const reviewRows = reviewGainers.map(p => `
-  <tr>
-    <td class="rank">#${p.ranks[latestDate] + 1}</td>
-    <td class="brand">${p.brand}</td>
-    <td class="name"><a href="https://www.yesstyle.com/en/info.html/pid.${p.id}" target="_blank">${p.name}</a></td>
-    <td class="reviews">${p.reviews[latestDate]?.toLocaleString() ?? '-'}</td>
-    <td class="gain">+${p.gain.toLocaleString()}</td>
-  </tr>`).join('') || '<tr><td colspan="5" class="empty">데이터 부족 (2일 이상 필요)</td></tr>';
-
-// 신규 진입 행
-const newRows = newEntries.length
-  ? newEntries.map(p => `
-  <tr>
-    <td class="rank">#${p.ranks[latestDate] + 1}</td>
-    <td class="brand">${p.brand}</td>
-    <td class="name"><a href="https://www.yesstyle.com/en/info.html/pid.${p.id}" target="_blank">${p.name}</a></td>
-    <td class="price">${formatPrice(p)}</td>
-  </tr>`).join('')
-  : '<tr><td colspan="4" class="empty">신규 진입 없음</td></tr>';
+const allDates = history.map(h => h.date);
+const allProducts = Object.values(productMap);
+const allBrands = [...new Set(allProducts.map(p => p.brand))].sort();
 
 const html = `<!DOCTYPE html>
 <html lang="ko">
@@ -174,197 +46,650 @@ const html = `<!DOCTYPE html>
 <title>YesStyle 순위 대시보드</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f6fa; color: #2d3436; }
-  .header { background: #2d3436; color: white; padding: 24px 32px; }
-  .header h1 { font-size: 22px; font-weight: 600; }
-  .header .meta { font-size: 13px; color: #b2bec3; margin-top: 6px; }
-  .container { max-width: 1200px; margin: 0 auto; padding: 24px 16px; }
-  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 24px; }
-  .stat-card { background: white; border-radius: 10px; padding: 16px 20px; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
-  .stat-card .label { font-size: 12px; color: #636e72; text-transform: uppercase; letter-spacing: .5px; }
-  .stat-card .value { font-size: 26px; font-weight: 700; margin-top: 4px; color: #2d3436; }
-  .stat-card .sub { font-size: 12px; color: #b2bec3; margin-top: 2px; }
-  .card { background: white; border-radius: 10px; padding: 20px 24px; box-shadow: 0 1px 4px rgba(0,0,0,.06); margin-bottom: 20px; }
-  .card h2 { font-size: 15px; font-weight: 600; margin-bottom: 16px; color: #2d3436; }
-  .chart-wrap { position: relative; height: 340px; }
-  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
-  th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: #636e72; padding: 8px 10px; border-bottom: 2px solid #f0f0f0; }
-  td { padding: 10px 10px; border-bottom: 1px solid #f5f6fa; vertical-align: middle; }
-  tr:last-child td { border-bottom: none; }
-  tr:hover td { background: #f9f9fb; }
-  td.rank { font-weight: 700; font-size: 15px; width: 56px; }
-  td.brand { color: #636e72; font-size: 12px; width: 120px; }
-  td.name a { color: #2d3436; text-decoration: none; }
-  td.name a:hover { color: #0984e3; text-decoration: underline; }
-  td.price { color: #0984e3; font-weight: 600; width: 90px; }
-  td.reviews { color: #636e72; width: 110px; }
-  td.gain { color: #00b894; font-weight: 700; width: 80px; }
-  td.diff-cell { width: 52px; }
-  .review-gain { color: #00b894; font-size: 11px; margin-left: 4px; }
-  .badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 4px; }
-  .badge.up { background: #d4f5e9; color: #00b894; }
-  .badge.down { background: #ffeaa7; color: #e17055; }
-  .badge.same { background: #f0f0f0; color: #b2bec3; }
-  .badge.new { background: #dfe6e9; color: #636e72; }
-  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-  .empty { color: #b2bec3; text-align: center; padding: 20px; }
-  .jumiso-banner { background: linear-gradient(135deg, #6c5ce7, #a29bfe); color: white; border-radius: 10px; padding: 20px 24px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(108,92,231,.3); }
-  .jumiso-banner h2 { font-size: 15px; font-weight: 700; margin-bottom: 14px; letter-spacing: .5px; }
-  .jumiso-banner table { color: white; }
-  .jumiso-banner th { color: rgba(255,255,255,.7); border-bottom-color: rgba(255,255,255,.2); }
-  .jumiso-banner td { border-bottom-color: rgba(255,255,255,.1); }
-  .jumiso-banner td.rank { color: white; }
-  .jumiso-banner td.price { color: #ffeaa7; }
-  .jumiso-banner td.reviews { color: rgba(255,255,255,.8); }
-  .jumiso-banner .review-gain { color: #55efc4; }
-  .jumiso-banner a { color: white; }
-  .jumiso-banner .badge.up { background: rgba(255,255,255,.2); color: white; }
-  .jumiso-banner .badge.down { background: rgba(255,255,255,.15); color: #ffeaa7; }
-  .jumiso-banner .badge.same { background: rgba(255,255,255,.1); color: rgba(255,255,255,.6); }
-  .jumiso-banner .badge.new { background: rgba(255,255,255,.15); color: white; }
-  .jumiso-chart-wrap { position: relative; height: 200px; margin-top: 16px; }
-  @media (max-width: 700px) { .grid-2 { grid-template-columns: 1fr; } td.brand { display: none; } }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f6fa; color: #2d3436; }
+
+.header { background: #2d3436; color: white; padding: 20px 32px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.header h1 { font-size: 20px; font-weight: 700; }
+.header .meta { font-size: 12px; color: #b2bec3; }
+
+.container { max-width: 1280px; margin: 0 auto; padding: 20px 16px; }
+
+/* JUMISO 배너 */
+.jumiso-banner { background: linear-gradient(135deg, #6c5ce7, #a29bfe); color: white; border-radius: 12px; padding: 20px 24px; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(108,92,231,.25); }
+.jumiso-banner h2 { font-size: 14px; font-weight: 700; letter-spacing: .5px; margin-bottom: 14px; }
+.jumiso-banner table { color: white; width: 100%; }
+.jumiso-banner th { font-size: 11px; color: rgba(255,255,255,.65); border-bottom: 1px solid rgba(255,255,255,.2); padding: 6px 10px; text-align: left; text-transform: uppercase; }
+.jumiso-banner td { padding: 9px 10px; border-bottom: 1px solid rgba(255,255,255,.1); font-size: 13px; }
+.jumiso-banner td.rank { font-weight: 700; width: 50px; }
+.jumiso-banner td.price { color: #ffeaa7; font-weight: 600; width: 80px; }
+.jumiso-banner td.reviews { color: rgba(255,255,255,.8); width: 100px; }
+.jumiso-banner a { color: white; text-decoration: none; }
+.jumiso-banner a:hover { text-decoration: underline; }
+.jumiso-chart-wrap { height: 180px; margin-top: 16px; }
+
+/* 필터 바 */
+.filter-bar { background: white; border-radius: 12px; padding: 16px 20px; margin-bottom: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.06); display: flex; flex-direction: column; gap: 14px; }
+.filter-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.filter-label { font-size: 11px; font-weight: 700; color: #636e72; text-transform: uppercase; letter-spacing: .5px; min-width: 56px; }
+.date-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+.date-btn { padding: 5px 12px; font-size: 12px; border: 1px solid #dfe6e9; border-radius: 20px; cursor: pointer; background: white; color: #636e72; transition: all .15s; }
+.date-btn:hover { border-color: #6c5ce7; color: #6c5ce7; }
+.date-btn.active { background: #6c5ce7; border-color: #6c5ce7; color: white; font-weight: 600; }
+.date-custom { display: flex; align-items: center; gap: 6px; }
+.date-custom input { border: 1px solid #dfe6e9; border-radius: 6px; padding: 5px 10px; font-size: 12px; color: #2d3436; }
+.date-custom span { font-size: 12px; color: #b2bec3; }
+
+.search-wrap { position: relative; flex: 1; min-width: 200px; max-width: 360px; }
+.search-wrap input { width: 100%; border: 1px solid #dfe6e9; border-radius: 8px; padding: 8px 12px 8px 34px; font-size: 13px; color: #2d3436; outline: none; transition: border .15s; }
+.search-wrap input:focus { border-color: #6c5ce7; }
+.search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #b2bec3; font-size: 15px; pointer-events: none; }
+.search-clear { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #b2bec3; font-size: 13px; display: none; }
+.search-clear.show { display: block; }
+
+.brand-tags { display: flex; gap: 6px; flex-wrap: wrap; max-height: 80px; overflow-y: auto; }
+.brand-tag { padding: 4px 10px; font-size: 12px; border: 1px solid #dfe6e9; border-radius: 20px; cursor: pointer; background: white; color: #636e72; transition: all .15s; white-space: nowrap; }
+.brand-tag:hover { border-color: #6c5ce7; color: #6c5ce7; }
+.brand-tag.active { background: #6c5ce7; border-color: #6c5ce7; color: white; font-weight: 600; }
+.filter-reset { padding: 5px 14px; font-size: 12px; border: 1px solid #dfe6e9; border-radius: 6px; cursor: pointer; background: white; color: #e17055; border-color: #fab1a0; transition: all .15s; }
+.filter-reset:hover { background: #e17055; color: white; border-color: #e17055; }
+
+/* 통계 카드 */
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.stat-card { background: white; border-radius: 10px; padding: 16px 20px; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+.stat-card .label { font-size: 11px; color: #636e72; text-transform: uppercase; letter-spacing: .5px; }
+.stat-card .value { font-size: 24px; font-weight: 700; margin-top: 4px; }
+.stat-card .sub { font-size: 11px; color: #b2bec3; margin-top: 2px; }
+
+/* 카드 */
+.card { background: white; border-radius: 12px; padding: 20px 24px; box-shadow: 0 1px 4px rgba(0,0,0,.06); margin-bottom: 20px; }
+.card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.card-header h2 { font-size: 14px; font-weight: 700; color: #2d3436; }
+.card-header .hint { font-size: 11px; color: #b2bec3; }
+.chart-wrap { height: 340px; }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+
+/* 테이블 */
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: #b2bec3; padding: 8px 10px; border-bottom: 2px solid #f5f6fa; }
+td { padding: 10px 10px; border-bottom: 1px solid #f5f6fa; vertical-align: middle; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #fafbff; }
+td.rank { font-weight: 700; font-size: 14px; width: 54px; color: #2d3436; }
+td.diff-cell { width: 50px; }
+td.brand { color: #636e72; font-size: 12px; width: 110px; }
+td.name a { color: #2d3436; text-decoration: none; }
+td.name a:hover { color: #6c5ce7; text-decoration: underline; }
+td.price { color: #0984e3; font-weight: 600; width: 80px; }
+td.reviews { color: #636e72; width: 100px; }
+td.gain { color: #00b894; font-weight: 700; width: 70px; }
+.review-gain { color: #00b894; font-size: 11px; margin-left: 4px; }
+.badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 4px; }
+.badge.up { background: #d4f5e9; color: #00b894; }
+.badge.down { background: #fff3cd; color: #e17055; }
+.badge.same { background: #f0f0f0; color: #b2bec3; }
+.badge.new { background: #e8f4fd; color: #0984e3; }
+.empty { color: #b2bec3; text-align: center; padding: 24px; font-size: 13px; }
+.no-result { text-align: center; padding: 32px; color: #b2bec3; font-size: 13px; }
+
+@media (max-width: 768px) {
+  .grid-2 { grid-template-columns: 1fr; }
+  td.brand { display: none; }
+  .header { padding: 16px; }
+  .container { padding: 12px; }
+}
 </style>
 </head>
 <body>
+
 <div class="header">
-  <h1>YesStyle 순위 대시보드</h1>
-  <div class="meta">카테고리: ${config.category || 'Beauty'} · 마지막 업데이트: ${latestDate} · 통화: ${currency}</div>
+  <div>
+    <h1>YesStyle 순위 대시보드</h1>
+    <div class="meta">카테고리: ${config.category || 'Beauty'} · 마지막 업데이트: ${latestDate} · 통화: ${currency}</div>
+  </div>
 </div>
+
 <div class="container">
 
-  <div class="jumiso-banner">
+  <!-- JUMISO 고정 배너 -->
+  <div class="jumiso-banner" id="jumisoBanner">
     <h2>JUMISO 브랜드 현황</h2>
     <table>
       <thead><tr><th>순위</th><th>변동</th><th>제품명</th><th>가격</th><th>리뷰 수</th></tr></thead>
-      <tbody>${jumisoRows}</tbody>
+      <tbody id="jumisoTableBody"></tbody>
     </table>
-    ${jumisoChartDatasets.length > 0 && dates.length >= 2 ? `
-    <div class="jumiso-chart-wrap">
-      <canvas id="jumisoChart"></canvas>
-    </div>` : ''}
+    <div class="jumiso-chart-wrap"><canvas id="jumisoChart"></canvas></div>
   </div>
 
+  <!-- 필터 바 -->
+  <div class="filter-bar">
+    <div class="filter-row">
+      <span class="filter-label">기간</span>
+      <div class="date-btns">
+        <button class="date-btn" data-days="7">7일</button>
+        <button class="date-btn" data-days="14">14일</button>
+        <button class="date-btn" data-days="30">30일</button>
+        <button class="date-btn active" data-days="0">전체</button>
+      </div>
+      <div class="date-custom">
+        <input type="date" id="dateFrom">
+        <span>~</span>
+        <input type="date" id="dateTo">
+      </div>
+    </div>
+    <div class="filter-row">
+      <span class="filter-label">검색</span>
+      <div class="search-wrap">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="searchInput" placeholder="브랜드명 또는 제품명 검색...">
+        <span class="search-clear" id="searchClear">✕</span>
+      </div>
+      <button class="filter-reset" id="filterReset">초기화</button>
+    </div>
+    <div class="filter-row">
+      <span class="filter-label">브랜드</span>
+      <div class="brand-tags" id="brandTags"></div>
+    </div>
+  </div>
+
+  <!-- 통계 카드 -->
   <div class="stats">
     <div class="stat-card">
-      <div class="label">추적 제품 수</div>
-      <div class="value">${latest.totalCrawled?.toLocaleString() ?? sortedProducts.length}</div>
-      <div class="sub">오늘 크롤링</div>
+      <div class="label">표시 제품 수</div>
+      <div class="value" id="statProducts">-</div>
+      <div class="sub" id="statPeriod">-</div>
     </div>
     <div class="stat-card">
-      <div class="label">누적 일수</div>
-      <div class="value">${dates.length}</div>
-      <div class="sub">${dates[0]} ~</div>
+      <div class="label">조회 기간</div>
+      <div class="value" id="statDays">-</div>
+      <div class="sub">일</div>
     </div>
     <div class="stat-card">
       <div class="label">1위 제품</div>
-      <div class="value" style="font-size:14px;margin-top:8px;">${sortedProducts[0]?.name?.slice(0, 18) ?? '-'}</div>
-      <div class="sub">${sortedProducts[0]?.brand ?? ''}</div>
+      <div class="value" id="statTop1" style="font-size:13px;margin-top:6px;">-</div>
+      <div class="sub" id="statTop1Brand">-</div>
     </div>
     <div class="stat-card">
-      <div class="label">오늘 신규 진입</div>
-      <div class="value">${newEntries.length}</div>
-      <div class="sub">이탈 ${dropped.length}개</div>
+      <div class="label">필터 브랜드</div>
+      <div class="value" id="statBrands">전체</div>
+      <div class="sub">선택됨</div>
     </div>
   </div>
 
+  <!-- 순위 트렌드 차트 -->
   <div class="card">
-    <h2>상위 20위 순위 트렌드</h2>
-    <div class="chart-wrap">
-      <canvas id="rankChart"></canvas>
+    <div class="card-header">
+      <h2 id="trendTitle">순위 트렌드</h2>
+      <span class="hint" id="trendHint"></span>
     </div>
+    <div class="chart-wrap"><canvas id="rankChart"></canvas></div>
   </div>
 
+  <!-- TOP 순위 테이블 -->
   <div class="card">
-    <h2>오늘의 TOP 10</h2>
+    <div class="card-header">
+      <h2 id="tableTitle">최신 순위</h2>
+      <span class="hint" id="tableHint"></span>
+    </div>
     <table>
       <thead><tr><th>순위</th><th>변동</th><th>브랜드</th><th>제품명</th><th>가격</th><th>리뷰 수</th></tr></thead>
-      <tbody>${top10Rows}</tbody>
+      <tbody id="rankTableBody"></tbody>
     </table>
   </div>
 
+  <!-- 리뷰 증가 / 신규 진입 -->
   <div class="grid-2">
     <div class="card">
-      <h2>리뷰 증가 TOP 10 (판매량 지표)</h2>
+      <div class="card-header"><h2>리뷰 증가 TOP 10</h2><span class="hint">전일 대비</span></div>
       <table>
         <thead><tr><th>순위</th><th>브랜드</th><th>제품명</th><th>총 리뷰</th><th>+신규</th></tr></thead>
-        <tbody>${reviewRows}</tbody>
+        <tbody id="reviewTableBody"></tbody>
       </table>
     </div>
     <div class="card">
-      <h2>오늘 신규 진입</h2>
+      <div class="card-header"><h2 id="newEntryTitle">신규 진입</h2><span class="hint" id="newEntryHint"></span></div>
       <table>
         <thead><tr><th>순위</th><th>브랜드</th><th>제품명</th><th>가격</th></tr></thead>
-        <tbody>${newRows}</tbody>
+        <tbody id="newEntryBody"></tbody>
       </table>
     </div>
   </div>
 
 </div>
+
 <script>
-const ctx = document.getElementById('rankChart').getContext('2d');
-new Chart(ctx, {
-  type: 'line',
-  data: {
-    labels: ${JSON.stringify(dates)},
-    datasets: ${JSON.stringify(chartDatasets)}
-  },
-  options: {
-    responsive: true,
-    maintainAspectRatio: false,
-    interaction: { mode: 'index', intersect: false },
-    scales: {
-      y: {
-        reverse: true,
-        min: 1,
-        max: 20,
-        ticks: { stepSize: 1, callback: v => '#' + v },
-        title: { display: true, text: '순위' }
-      },
-      x: { grid: { display: false } }
+// ── 내장 데이터 ──────────────────────────────────────────
+const ALL_DATES = ${JSON.stringify(allDates)};
+const ALL_BRANDS = ${JSON.stringify(allBrands)};
+const PRODUCT_MAP = ${JSON.stringify(productMap)};
+const LATEST_DATE = '${latestDate}';
+const CURRENCY = '${currency}';
+const JUMISO_BRAND = 'JUMISO';
+
+const CHART_COLORS = [
+  '#4e79a7','#f28e2b','#e15759','#76b7b2','#59a14f',
+  '#edc948','#b07aa1','#ff9da7','#9c755f','#636e72',
+  '#1a6b9a','#d4681e','#c43c3e','#4f9490','#3d8035',
+  '#c9a030','#8a5a80','#e07a85','#7a5540','#8a8078'
+];
+
+// ── 상태 ─────────────────────────────────────────────────
+let state = {
+  dateFrom: ALL_DATES[0],
+  dateTo: LATEST_DATE,
+  selectedBrands: [],   // 빈 배열 = 전체
+  searchQuery: ''
+};
+
+// ── 차트 인스턴스 ─────────────────────────────────────────
+let rankChartInst = null;
+let jumisoChartInst = null;
+
+// ── 유틸 ─────────────────────────────────────────────────
+function fmt(p) {
+  const pd = p.prices[state.dateTo] || p.prices[LATEST_DATE];
+  if (!pd) return '-';
+  return (pd.currency === 'KRW' ? '₩' : '$') + pd.num.toLocaleString();
+}
+
+function diffBadge(diff) {
+  if (diff === null) return '<span class="badge new">신규</span>';
+  if (diff > 0) return \`<span class="badge up">▲\${diff}</span>\`;
+  if (diff < 0) return \`<span class="badge down">▼\${Math.abs(diff)}</span>\`;
+  return '<span class="badge same">-</span>';
+}
+
+function filteredDates() {
+  return ALL_DATES.filter(d => d >= state.dateFrom && d <= state.dateTo);
+}
+
+function filteredProducts() {
+  const dates = filteredDates();
+  const endDate = dates[dates.length - 1];
+  const q = state.searchQuery.toLowerCase();
+  return Object.values(PRODUCT_MAP).filter(p => {
+    if (p.ranks[endDate] === undefined) return false;
+    if (state.selectedBrands.length > 0 && !state.selectedBrands.includes(p.brand)) return false;
+    if (q && !p.brand.toLowerCase().includes(q) && !p.name.toLowerCase().includes(q)) return false;
+    return true;
+  }).sort((a, b) => a.ranks[endDate] - b.ranks[endDate]);
+}
+
+// 검색어 있으면 전 기간에서 등장한 제품도 포함 (순위권 밖이어도)
+function searchProducts() {
+  const q = state.searchQuery.toLowerCase();
+  if (!q) return [];
+  return Object.values(PRODUCT_MAP).filter(p =>
+    p.brand.toLowerCase().includes(q) || p.name.toLowerCase().includes(q)
+  );
+}
+
+// ── 렌더: JUMISO 배너 ────────────────────────────────────
+function renderJumiso() {
+  const dates = ALL_DATES;
+  const endDate = LATEST_DATE;
+  const prevDate = dates.length >= 2 ? dates[dates.length - 2] : null;
+  const products = Object.values(PRODUCT_MAP)
+    .filter(p => p.brand.toUpperCase() === JUMISO_BRAND)
+    .sort((a, b) => (a.ranks[endDate] ?? 9999) - (b.ranks[endDate] ?? 9999));
+
+  const tbody = document.getElementById('jumisoTableBody');
+  if (!products.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="empty">JUMISO 제품 없음</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = products.map(p => {
+    const rank = p.ranks[endDate];
+    const prevRank = prevDate ? p.ranks[prevDate] : undefined;
+    const diff = (rank && prevRank) ? prevRank - rank : null;
+    const rdiff = (p.reviews[endDate] && prevDate && p.reviews[prevDate])
+      ? p.reviews[endDate] - p.reviews[prevDate] : null;
+    const rankStr = rank ? \`#\${rank}\` : '<span style="opacity:.5">미진입</span>';
+    return \`<tr>
+      <td class="rank">\${rankStr}</td>
+      <td class="diff-cell">\${rank ? diffBadge(diff) : ''}</td>
+      <td class="name"><a href="https://www.yesstyle.com/en/info.html/pid.\${p.id}" target="_blank">\${p.name}</a></td>
+      <td class="price">\${fmt(p)}</td>
+      <td class="reviews">\${p.reviews[endDate]?.toLocaleString() ?? '-'}\${rdiff > 0 ? \`<span class="review-gain"> +\${rdiff}</span>\` : ''}</td>
+    </tr>\`;
+  }).join('');
+
+  // JUMISO 차트
+  const jDates = ALL_DATES;
+  if (jumisoChartInst) jumisoChartInst.destroy();
+  if (products.length === 0 || jDates.length < 2) return;
+
+  jumisoChartInst = new Chart(document.getElementById('jumisoChart'), {
+    type: 'line',
+    data: {
+      labels: jDates,
+      datasets: products.map((p, i) => ({
+        label: p.name.slice(0, 35),
+        data: jDates.map(d => p.ranks[d] || null),
+        borderColor: ['rgba(255,255,255,.9)', 'rgba(255,255,200,.8)'][i % 2],
+        backgroundColor: ['rgba(255,255,255,.9)', 'rgba(255,255,200,.8)'][i % 2],
+        tension: 0.3, pointRadius: 3, spanGaps: true
+      }))
     },
-    plugins: {
-      legend: {
-        position: 'right',
-        labels: { font: { size: 11 }, boxWidth: 12, padding: 8 }
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        y: { reverse: true, ticks: { callback: v => '#'+v, color: 'rgba(255,255,255,.7)' }, grid: { color: 'rgba(255,255,255,.1)' } },
+        x: { grid: { display: false }, ticks: { color: 'rgba(255,255,255,.7)' } }
       },
-      tooltip: {
-        callbacks: {
-          label: ctx => \` \${ctx.dataset.label}: #\${ctx.raw}\`
-        }
+      plugins: {
+        legend: { labels: { color: 'white', font: { size: 11 }, boxWidth: 10 } },
+        tooltip: { callbacks: { label: c => \` \${c.dataset.label}: #\${c.raw}\` } }
       }
     }
+  });
+}
+
+// ── 렌더: 순위 트렌드 차트 ───────────────────────────────
+function renderTrendChart() {
+  const dates = filteredDates();
+  const endDate = dates[dates.length - 1];
+  const q = state.searchQuery.toLowerCase();
+
+  let products;
+  if (q) {
+    // 검색 결과 제품 (순위권 밖 포함)
+    products = searchProducts().sort((a, b) =>
+      (a.ranks[endDate] ?? 9999) - (b.ranks[endDate] ?? 9999)
+    ).slice(0, 20);
+  } else {
+    products = filteredProducts().slice(0, 20);
   }
-});
-${jumisoChartDatasets.length > 0 && dates.length >= 2 ? `
-const jumisoCtx = document.getElementById('jumisoChart').getContext('2d');
-new Chart(jumisoCtx, {
-  type: 'line',
-  data: {
-    labels: ${JSON.stringify(dates)},
-    datasets: ${JSON.stringify(jumisoChartDatasets)}
-  },
-  options: {
-    responsive: true,
-    maintainAspectRatio: false,
-    interaction: { mode: 'index', intersect: false },
-    scales: {
-      y: {
-        reverse: true,
-        min: 1,
-        ticks: { stepSize: 10, callback: v => '#' + v, color: 'rgba(255,255,255,.7)' },
-        grid: { color: 'rgba(255,255,255,.1)' },
-        title: { display: true, text: '순위', color: 'rgba(255,255,255,.7)' }
-      },
-      x: { grid: { display: false }, ticks: { color: 'rgba(255,255,255,.7)' } }
+
+  const title = q
+    ? \`"\${state.searchQuery}" 검색 결과 순위 트렌드\`
+    : state.selectedBrands.length > 0
+      ? \`[\${state.selectedBrands.join(', ')}] 순위 트렌드\`
+      : '상위 20위 순위 트렌드';
+
+  document.getElementById('trendTitle').textContent = title;
+  document.getElementById('trendHint').textContent = \`\${dates[0]} ~ \${dates[dates.length-1]}\`;
+
+  if (rankChartInst) rankChartInst.destroy();
+
+  if (!products.length) {
+    document.getElementById('rankChart').getContext('2d').clearRect(0,0,9999,9999);
+    return;
+  }
+
+  rankChartInst = new Chart(document.getElementById('rankChart'), {
+    type: 'line',
+    data: {
+      labels: dates,
+      datasets: products.map((p, i) => ({
+        label: \`\${p.brand} \${p.name}\`.slice(0, 32),
+        data: dates.map(d => p.ranks[d] || null),
+        borderColor: CHART_COLORS[i % CHART_COLORS.length],
+        backgroundColor: CHART_COLORS[i % CHART_COLORS.length],
+        tension: 0.3,
+        pointRadius: dates.length <= 10 ? 4 : 2,
+        spanGaps: true
+      }))
     },
-    plugins: {
-      legend: { labels: { color: 'white', font: { size: 12 }, boxWidth: 12 } },
-      tooltip: { callbacks: { label: ctx => \` \${ctx.dataset.label}: #\${ctx.raw}\` } }
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        y: { reverse: true, min: 1, ticks: { stepSize: 1, callback: v => '#'+v }, title: { display: true, text: '순위' } },
+        x: { grid: { display: false } }
+      },
+      plugins: {
+        legend: { position: 'right', labels: { font: { size: 11 }, boxWidth: 10, padding: 6 } },
+        tooltip: { callbacks: { label: c => \` \${c.dataset.label}: #\${c.raw}\` } }
+      }
     }
+  });
+}
+
+// ── 렌더: 순위 테이블 ────────────────────────────────────
+function renderRankTable() {
+  const dates = filteredDates();
+  const endDate = dates[dates.length - 1];
+  const prevDate = dates.length >= 2 ? dates[dates.length - 2] : null;
+  const q = state.searchQuery.toLowerCase();
+
+  let products;
+  if (q) {
+    products = searchProducts().sort((a, b) =>
+      (a.ranks[endDate] ?? 9999) - (b.ranks[endDate] ?? 9999)
+    );
+  } else {
+    products = filteredProducts();
   }
-});` : ''}
+
+  document.getElementById('tableTitle').textContent = q
+    ? \`"\${state.searchQuery}" 검색 결과\`
+    : state.selectedBrands.length > 0
+      ? \`[\${state.selectedBrands.join(', ')}] 제품 순위\`
+      : '최신 순위 TOP 50';
+  document.getElementById('tableHint').textContent = \`기준일: \${endDate}\`;
+
+  const display = products.slice(0, 50);
+  const tbody = document.getElementById('rankTableBody');
+
+  if (!display.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="no-result">검색 결과가 없습니다.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = display.map(p => {
+    const rank = p.ranks[endDate];
+    const prevRank = prevDate ? p.ranks[prevDate] : undefined;
+    const diff = (rank && prevRank) ? prevRank - rank : null;
+    const rdiff = (p.reviews[endDate] && prevDate && p.reviews[prevDate])
+      ? p.reviews[endDate] - p.reviews[prevDate] : null;
+    const rankStr = rank ? \`#\${rank}\` : '<span style="color:#b2bec3">-</span>';
+    return \`<tr>
+      <td class="rank">\${rankStr}</td>
+      <td class="diff-cell">\${diffBadge(rank ? diff : null)}</td>
+      <td class="brand">\${p.brand}</td>
+      <td class="name"><a href="https://www.yesstyle.com/en/info.html/pid.\${p.id}" target="_blank">\${p.name}</a></td>
+      <td class="price">\${fmt(p)}</td>
+      <td class="reviews">\${p.reviews[endDate]?.toLocaleString() ?? '-'}\${rdiff > 0 ? \`<span class="review-gain"> +\${rdiff}</span>\` : ''}</td>
+    </tr>\`;
+  }).join('');
+}
+
+// ── 렌더: 리뷰 증가 테이블 ──────────────────────────────
+function renderReviewTable() {
+  const dates = filteredDates();
+  const endDate = dates[dates.length - 1];
+  const prevDate = dates.length >= 2 ? dates[dates.length - 2] : null;
+
+  if (!prevDate) {
+    document.getElementById('reviewTableBody').innerHTML =
+      '<tr><td colspan="5" class="empty">2일 이상 데이터 필요</td></tr>';
+    return;
+  }
+
+  const gainers = filteredProducts()
+    .map(p => ({ ...p, gain: (p.reviews[endDate] && p.reviews[prevDate]) ? p.reviews[endDate] - p.reviews[prevDate] : null }))
+    .filter(p => p.gain > 0)
+    .sort((a, b) => b.gain - a.gain)
+    .slice(0, 10);
+
+  document.getElementById('reviewTableBody').innerHTML = gainers.length
+    ? gainers.map(p => \`<tr>
+        <td class="rank">#\${p.ranks[endDate]}</td>
+        <td class="brand">\${p.brand}</td>
+        <td class="name"><a href="https://www.yesstyle.com/en/info.html/pid.\${p.id}" target="_blank">\${p.name}</a></td>
+        <td class="reviews">\${p.reviews[endDate].toLocaleString()}</td>
+        <td class="gain">+\${p.gain.toLocaleString()}</td>
+      </tr>\`).join('')
+    : '<tr><td colspan="5" class="empty">리뷰 증가 없음</td></tr>';
+}
+
+// ── 렌더: 신규 진입 테이블 ──────────────────────────────
+function renderNewEntry() {
+  const dates = filteredDates();
+  const endDate = dates[dates.length - 1];
+  const prevDate = dates.length >= 2 ? dates[dates.length - 2] : null;
+
+  const products = filteredProducts();
+  const newEntries = prevDate
+    ? products.filter(p => p.ranks[endDate] && !p.ranks[prevDate]).slice(0, 10)
+    : [];
+
+  document.getElementById('newEntryTitle').textContent = '신규 진입';
+  document.getElementById('newEntryHint').textContent = prevDate ? \`\${prevDate} 대비\` : '';
+
+  document.getElementById('newEntryBody').innerHTML = newEntries.length
+    ? newEntries.map(p => \`<tr>
+        <td class="rank">#\${p.ranks[endDate]}</td>
+        <td class="brand">\${p.brand}</td>
+        <td class="name"><a href="https://www.yesstyle.com/en/info.html/pid.\${p.id}" target="_blank">\${p.name}</a></td>
+        <td class="price">\${fmt(p)}</td>
+      </tr>\`).join('')
+    : '<tr><td colspan="4" class="empty">신규 진입 없음</td></tr>';
+}
+
+// ── 렌더: 통계 카드 ──────────────────────────────────────
+function renderStats() {
+  const dates = filteredDates();
+  const endDate = dates[dates.length - 1];
+  const products = filteredProducts();
+
+  document.getElementById('statProducts').textContent = products.length.toLocaleString();
+  document.getElementById('statPeriod').textContent = \`\${dates[0]} ~\`;
+  document.getElementById('statDays').textContent = dates.length;
+  document.getElementById('statTop1').textContent = products[0]?.name?.slice(0, 16) ?? '-';
+  document.getElementById('statTop1Brand').textContent = products[0]?.brand ?? '';
+  document.getElementById('statBrands').textContent =
+    state.selectedBrands.length > 0 ? state.selectedBrands.length + '개' : '전체';
+}
+
+// ── 전체 렌더 ────────────────────────────────────────────
+function render() {
+  renderStats();
+  renderTrendChart();
+  renderRankTable();
+  renderReviewTable();
+  renderNewEntry();
+}
+
+// ── 브랜드 태그 초기화 ────────────────────────────────────
+function initBrandTags() {
+  const container = document.getElementById('brandTags');
+  container.innerHTML = ALL_BRANDS.map(b => {
+    const isJumiso = b.toUpperCase() === 'JUMISO';
+    return \`<span class="brand-tag\${isJumiso ? ' active' : ''}" data-brand="\${b}">\${b}</span>\`;
+  }).join('');
+
+  // JUMISO 기본 선택
+  state.selectedBrands = ['JUMISO'];
+
+  container.addEventListener('click', e => {
+    const tag = e.target.closest('.brand-tag');
+    if (!tag) return;
+    const brand = tag.dataset.brand;
+    const idx = state.selectedBrands.indexOf(brand);
+    if (idx >= 0) {
+      state.selectedBrands.splice(idx, 1);
+      tag.classList.remove('active');
+    } else {
+      state.selectedBrands.push(brand);
+      tag.classList.add('active');
+    }
+    render();
+  });
+}
+
+// ── 날짜 필터 초기화 ─────────────────────────────────────
+function initDateFilters() {
+  const fromInput = document.getElementById('dateFrom');
+  const toInput = document.getElementById('dateTo');
+  fromInput.min = toInput.min = ALL_DATES[0];
+  fromInput.max = toInput.max = LATEST_DATE;
+  fromInput.value = state.dateFrom;
+  toInput.value = state.dateTo;
+
+  document.querySelectorAll('.date-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.date-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const days = parseInt(btn.dataset.days);
+      if (days === 0) {
+        state.dateFrom = ALL_DATES[0];
+      } else {
+        const from = new Date(LATEST_DATE);
+        from.setDate(from.getDate() - days + 1);
+        state.dateFrom = from.toISOString().slice(0, 10);
+      }
+      state.dateTo = LATEST_DATE;
+      fromInput.value = state.dateFrom;
+      toInput.value = state.dateTo;
+      render();
+    });
+  });
+
+  fromInput.addEventListener('change', () => {
+    state.dateFrom = fromInput.value;
+    document.querySelectorAll('.date-btn').forEach(b => b.classList.remove('active'));
+    render();
+  });
+  toInput.addEventListener('change', () => {
+    state.dateTo = toInput.value;
+    document.querySelectorAll('.date-btn').forEach(b => b.classList.remove('active'));
+    render();
+  });
+}
+
+// ── 검색 초기화 ──────────────────────────────────────────
+function initSearch() {
+  const input = document.getElementById('searchInput');
+  const clear = document.getElementById('searchClear');
+
+  let timer;
+  input.addEventListener('input', () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      state.searchQuery = input.value.trim();
+      clear.classList.toggle('show', !!state.searchQuery);
+      render();
+    }, 250);
+  });
+
+  clear.addEventListener('click', () => {
+    input.value = '';
+    state.searchQuery = '';
+    clear.classList.remove('show');
+    render();
+  });
+}
+
+// ── 초기화 버튼 ──────────────────────────────────────────
+function initResetBtn() {
+  document.getElementById('filterReset').addEventListener('click', () => {
+    state.dateFrom = ALL_DATES[0];
+    state.dateTo = LATEST_DATE;
+    state.selectedBrands = ['JUMISO'];
+    state.searchQuery = '';
+    document.getElementById('searchInput').value = '';
+    document.getElementById('searchClear').classList.remove('show');
+    document.getElementById('dateFrom').value = state.dateFrom;
+    document.getElementById('dateTo').value = state.dateTo;
+    document.querySelectorAll('.date-btn').forEach(b =>
+      b.classList.toggle('active', b.dataset.days === '0'));
+    document.querySelectorAll('.brand-tag').forEach(t =>
+      t.classList.toggle('active', t.dataset.brand.toUpperCase() === 'JUMISO'));
+    render();
+  });
+}
+
+// ── 초기 실행 ────────────────────────────────────────────
+renderJumiso();
+initBrandTags();
+initDateFilters();
+initSearch();
+initResetBtn();
+render();
 </script>
 </body>
 </html>`;
