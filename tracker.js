@@ -45,10 +45,10 @@ async function crawlPage(page, pageNum) {
       const brand = dashIdx >= 0 ? titleText.slice(0, dashIdx).trim() : '';
       const name = dashIdx >= 0 ? titleText.slice(dashIdx + 3).trim() : titleText;
 
-      // 가격: itemSellPrice가 실제 표시 가격, itemPrice는 원가
+      // itemPrice = 실제 판매가(할인 적용), itemSellPrice = 원가
+      const priceEl = el.querySelector('[class*="itemPrice"]:not([class*="itemSellPrice"]):not([class*="Wrapper"])');
       const sellPriceEl = el.querySelector('[class*="itemSellPrice"]');
-      const priceEl = el.querySelector('[class*="itemPrice"]');
-      const priceRaw = (sellPriceEl || priceEl)?.textContent.replace(/\s+/g, ' ').trim() || '';
+      const priceRaw = (priceEl || sellPriceEl)?.textContent.replace(/\s+/g, ' ').trim() || '';
       const currency = priceRaw.includes('$') ? 'USD' : priceRaw.includes('₩') ? 'KRW' : 'UNKNOWN';
       const priceNum = parseFloat(priceRaw.replace(/[^0-9.]/g, '').replace(/,/g, '')) || 0;
       const price = priceRaw;
