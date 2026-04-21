@@ -54,12 +54,16 @@ async function crawlPage(page, pageNum) {
       const badgeEl = el.querySelector('[class*="categoryBestsellerRankBadge"], [class*="RankBadge"]');
       const badge = badgeEl ? badgeEl.textContent.trim() : '';
 
+      // 리뷰 수
+      const reviewEl = el.querySelector('[class*="newReviewCount"]');
+      const reviewCount = reviewEl ? parseInt(reviewEl.textContent.replace(/,/g, ''), 10) || 0 : 0;
+
       // 이미지
       const imgEl = el.querySelector('img');
       const img = imgEl ? (imgEl.src || imgEl.getAttribute('data-src') || '') : '';
 
       if (name || id) {
-        items.push({ rank, id, name, brand, price, badge, link, img });
+        items.push({ rank, id, name, brand, price, badge, reviewCount, link, img });
       }
     });
 
@@ -144,9 +148,9 @@ async function run() {
 
   // CSV 저장
   const csvFile = path.join(outputDir, `${TODAY}.csv`);
-  const csvHeader = 'date,rank,id,brand,name,price,badge,link\n';
+  const csvHeader = 'date,rank,id,brand,name,price,badge,reviewCount,link\n';
   const csvRows = tracked.map(p =>
-    `"${TODAY}","${p.rank}","${p.id}","${(p.brand||'').replace(/"/g, '""')}","${(p.name||'').replace(/"/g, '""')}","${p.price||''}","${p.badge||''}","${p.link||''}"`
+    `"${TODAY}","${p.rank}","${p.id}","${(p.brand||'').replace(/"/g, '""')}","${(p.name||'').replace(/"/g, '""')}","${p.price||''}","${p.badge||''}","${p.reviewCount||0}","${p.link||''}"`
   ).join('\n');
   fs.writeFileSync(csvFile, csvHeader + csvRows, 'utf-8');
   console.log(`CSV 저장: ${csvFile}`);
@@ -181,17 +185,31 @@ function printRankChanges(history, today) {
     if (key) prevMap[key] = p.rank;
   });
 
+  const prevReviewMap = {};
+  (prev.products || []).forEach(p => {
+    const key = p.id || p.name;
+    if (key) prevReviewMap[key] = p.reviewCount || 0;
+  });
+
   let changeCount = 0;
   today.slice(0, 20).forEach(p => {
     const key = p.id || p.name;
     const prevRank = prevMap[key];
+    const prevReviews = prevReviewMap[key];
+    const newReviews = (prevReviews !== undefined && p.reviewCount > prevReviews)
+      ? ` (+${p.reviewCount - prevReviews} 리뷰)`
+      : '';
+
     if (prevRank === undefined) {
-      console.log(`  #${p.rank} ${p.brand} ${p.name} [신규 진입]`);
+      console.log(`  #${p.rank} ${p.brand} ${p.name} [신규 진입]${newReviews}`);
       changeCount++;
     } else if (prevRank !== p.rank) {
       const diff = prevRank - p.rank;
       const arrow = diff > 0 ? `▲${diff}` : `▼${Math.abs(diff)}`;
-      console.log(`  #${p.rank} ${p.brand} ${p.name} ${arrow} (이전 #${prevRank})`);
+      console.log(`  #${p.rank} ${p.brand} ${p.name} ${arrow} (이전 #${prevRank})${newReviews}`);
+      changeCount++;
+    } else if (newReviews) {
+      console.log(`  #${p.rank} ${p.brand} ${p.name} 순위유지${newReviews}`);
       changeCount++;
     }
   });
