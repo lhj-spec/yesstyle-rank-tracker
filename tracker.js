@@ -45,13 +45,15 @@ async function crawlPage(page, pageNum) {
       const brand = dashIdx >= 0 ? titleText.slice(0, dashIdx).trim() : '';
       const name = dashIdx >= 0 ? titleText.slice(dashIdx + 3).trim() : titleText;
 
-      // itemPrice = 실제 판매가(할인 적용), itemSellPrice = 원가
+      // itemPrice = 판매가(할인 적용), itemSellPrice = 원가
       const priceEl = el.querySelector('[class*="itemPrice"]:not([class*="itemSellPrice"]):not([class*="Wrapper"])');
-      const sellPriceEl = el.querySelector('[class*="itemSellPrice"]');
-      const priceRaw = (priceEl || sellPriceEl)?.textContent.replace(/\s+/g, ' ').trim() || '';
-      const currency = priceRaw.includes('$') ? 'USD' : priceRaw.includes('₩') ? 'KRW' : 'UNKNOWN';
+      const originalPriceEl = el.querySelector('[class*="itemSellPrice"]');
+      const priceRaw = priceEl?.textContent.replace(/\s+/g, ' ').trim() || '';
+      const originalPriceRaw = originalPriceEl?.textContent.replace(/\s+/g, ' ').trim() || '';
+      const currency = (priceRaw || originalPriceRaw).includes('$') ? 'USD' : (priceRaw || originalPriceRaw).includes('₩') ? 'KRW' : 'UNKNOWN';
       const priceNum = parseFloat(priceRaw.replace(/[^0-9.]/g, '').replace(/,/g, '')) || 0;
-      const price = priceRaw;
+      const originalPriceNum = parseFloat(originalPriceRaw.replace(/[^0-9.]/g, '').replace(/,/g, '')) || 0;
+      const price = priceRaw || originalPriceRaw;
 
       // 카테고리 베스트셀러 랭크 배지 (있을 경우)
       const badgeEl = el.querySelector('[class*="categoryBestsellerRankBadge"], [class*="RankBadge"]');
@@ -66,7 +68,7 @@ async function crawlPage(page, pageNum) {
       const img = imgEl ? (imgEl.src || imgEl.getAttribute('data-src') || '') : '';
 
       if (name || id) {
-        items.push({ rank, id, name, brand, price, priceNum, currency, badge, reviewCount, link, img });
+        items.push({ rank, id, name, brand, price, priceNum, originalPrice: originalPriceRaw, originalPriceNum, currency, badge, reviewCount, link, img });
       }
     });
 
@@ -158,9 +160,9 @@ async function run() {
 
   // CSV 저장
   const csvFile = path.join(outputDir, `${TODAY}.csv`);
-  const csvHeader = 'date,rank,id,brand,name,currency,priceNum,price,badge,reviewCount,link\n';
+  const csvHeader = 'date,rank,id,brand,name,currency,priceNum,price,originalPriceNum,originalPrice,badge,reviewCount,link\n';
   const csvRows = tracked.map(p =>
-    `"${TODAY}","${p.rank}","${p.id}","${(p.brand||'').replace(/"/g, '""')}","${(p.name||'').replace(/"/g, '""')}","${p.currency||''}","${p.priceNum||0}","${p.price||''}","${p.badge||''}","${p.reviewCount||0}","${p.link||''}"`
+    `"${TODAY}","${p.rank}","${p.id}","${(p.brand||'').replace(/"/g, '""')}","${(p.name||'').replace(/"/g, '""')}","${p.currency||''}","${p.priceNum||0}","${p.price||''}","${p.originalPriceNum||0}","${p.originalPrice||''}","${p.badge||''}","${p.reviewCount||0}","${p.link||''}"`
   ).join('\n');
   fs.writeFileSync(csvFile, csvHeader + csvRows, 'utf-8');
   console.log(`CSV 저장: ${csvFile}`);
