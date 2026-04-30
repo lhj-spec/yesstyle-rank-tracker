@@ -50,10 +50,18 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .search-clear { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #b2bec3; font-size: 13px; display: none; }
 .search-clear.show { display: block; }
 
-.brand-tags { display: flex; gap: 6px; flex-wrap: wrap; max-height: 80px; overflow-y: auto; }
-.brand-tag { padding: 4px 10px; font-size: 12px; border: 1px solid #dfe6e9; border-radius: 20px; cursor: pointer; background: white; color: #636e72; transition: all .15s; white-space: nowrap; }
-.brand-tag:hover { border-color: #6c5ce7; color: #6c5ce7; }
-.brand-tag.active { background: #6c5ce7; border-color: #6c5ce7; color: white; font-weight: 600; }
+.brand-dropdown { position: relative; display: inline-block; }
+.brand-dropdown-btn { display: flex; align-items: center; gap: 6px; padding: 5px 12px; font-size: 13px; border: 1px solid #dfe6e9; border-radius: 8px; background: white; color: #2d3436; cursor: pointer; min-width: 200px; justify-content: space-between; white-space: nowrap; }
+.brand-dropdown-btn:hover, .brand-dropdown-btn.open { border-color: #6c5ce7; box-shadow: 0 0 0 2px rgba(108,92,231,.15); }
+.brand-dropdown-arrow { font-size: 10px; color: #b2bec3; margin-left: 4px; }
+.brand-dropdown-panel { position: absolute; top: calc(100% + 4px); left: 0; z-index: 200; background: white; border: 1px solid #dfe6e9; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,.12); min-width: 220px; display: none; flex-direction: column; overflow: hidden; }
+.brand-dropdown-panel.open { display: flex; }
+.brand-panel-search { border: none; border-bottom: 1px solid #f0f0f0; padding: 8px 12px; font-size: 12px; outline: none; width: 100%; box-sizing: border-box; }
+.brand-checkbox-list { overflow-y: auto; max-height: 240px; padding: 4px 0; }
+.brand-checkbox-item { display: flex; align-items: center; gap: 8px; padding: 6px 12px; cursor: pointer; font-size: 13px; color: #2d3436; user-select: none; }
+.brand-checkbox-item:hover { background: #f5f6fa; }
+.brand-checkbox-item input[type="checkbox"] { accent-color: #6c5ce7; width: 14px; height: 14px; cursor: pointer; flex-shrink: 0; }
+.brand-checkbox-item.checked { color: #6c5ce7; font-weight: 600; }
 .filter-reset { padding: 5px 14px; font-size: 12px; border: 1px solid #dfe6e9; border-radius: 6px; cursor: pointer; background: white; color: #e17055; border-color: #fab1a0; transition: all .15s; }
 .filter-reset:hover { background: #e17055; color: white; border-color: #e17055; }
 
@@ -180,7 +188,16 @@ td.gain { color: #00b894; font-weight: 700; width: 70px; }
     </div>
     <div class="filter-row">
       <span class="filter-label" data-i18n="brand">브랜드</span>
-      <div class="brand-tags" id="brandTags"></div>
+      <div class="brand-dropdown" id="brandDropdown">
+        <button type="button" class="brand-dropdown-btn" id="brandDropdownBtn">
+          <span id="brandDropdownLabel">JUMISO</span>
+          <span class="brand-dropdown-arrow">▾</span>
+        </button>
+        <div class="brand-dropdown-panel" id="brandDropdownPanel">
+          <input type="text" class="brand-panel-search" id="brandPanelSearch">
+          <div class="brand-checkbox-list" id="brandCheckboxList"></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -325,6 +342,8 @@ function applyLang() {
   document.querySelectorAll('.lang-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.lang === lang);
   });
+  // 브랜드 드롭다운 버튼 텍스트 언어 처리
+  if (typeof _updateBrandBtn === 'function') _updateBrandBtn();
   // statBrands 기본값 처리
   const sb = document.getElementById('statBrands');
   if (sb && (sb.textContent === T.ko.all || sb.textContent === T.en.all)) {
@@ -769,29 +788,69 @@ function render() {
   renderNewEntry();
 }
 
-// ── 브랜드 태그 초기화 ────────────────────────────────────
+// ── 브랜드 체크박스 드롭다운 초기화 ─────────────────────────
+let _updateBrandBtn, _buildBrandList;
+
 function initBrandTags() {
-  const container = document.getElementById('brandTags');
-  container.innerHTML = ALL_BRANDS.map(b => {
-    const isJumiso = b.toUpperCase() === 'JUMISO';
-    return `<span class="brand-tag${isJumiso ? ' active' : ''}" data-brand="${b}">${b}</span>`;
-  }).join('');
+  const SORTED = [...ALL_BRANDS].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  const btn    = document.getElementById('brandDropdownBtn');
+  const panel  = document.getElementById('brandDropdownPanel');
+  const label  = document.getElementById('brandDropdownLabel');
+  const search = document.getElementById('brandPanelSearch');
+  const list   = document.getElementById('brandCheckboxList');
 
-  // JUMISO 기본 선택
-  state.selectedBrands = ['JUMISO'];
-
-  container.addEventListener('click', e => {
-    const tag = e.target.closest('.brand-tag');
-    if (!tag) return;
-    const brand = tag.dataset.brand;
-    const idx = state.selectedBrands.indexOf(brand);
-    if (idx >= 0) {
-      state.selectedBrands.splice(idx, 1);
-      tag.classList.remove('active');
+  _updateBrandBtn = function() {
+    if (state.selectedBrands.length === 0) {
+      label.textContent = lang === 'ko' ? '전체 브랜드' : 'All Brands';
+    } else if (state.selectedBrands.length === 1) {
+      label.textContent = state.selectedBrands[0];
     } else {
-      state.selectedBrands.push(brand);
-      tag.classList.add('active');
+      label.textContent = `${state.selectedBrands.length}${lang === 'ko' ? '개 브랜드' : ' brands'}`;
     }
+  };
+
+  _buildBrandList = function(filter) {
+    const q = (filter || '').toLowerCase();
+    list.innerHTML = SORTED
+      .filter(b => !q || b.toLowerCase().includes(q))
+      .map(b => {
+        const on = state.selectedBrands.includes(b);
+        return `<label class="brand-checkbox-item${on ? ' checked' : ''}"><input type="checkbox" value="${b}"${on ? ' checked' : ''}>${b}</label>`;
+      }).join('');
+  };
+
+  state.selectedBrands = ['JUMISO'];
+  _buildBrandList('');
+  _updateBrandBtn();
+
+  btn.addEventListener('click', () => {
+    const opening = !panel.classList.contains('open');
+    panel.classList.toggle('open', opening);
+    btn.classList.toggle('open', opening);
+    if (opening) { search.value = ''; _buildBrandList(''); search.focus(); }
+  });
+
+  document.addEventListener('click', e => {
+    if (!document.getElementById('brandDropdown').contains(e.target)) {
+      panel.classList.remove('open');
+      btn.classList.remove('open');
+    }
+  });
+
+  search.addEventListener('input', () => _buildBrandList(search.value));
+
+  list.addEventListener('change', e => {
+    if (e.target.type !== 'checkbox') return;
+    const brand = e.target.value;
+    const item  = e.target.closest('.brand-checkbox-item');
+    if (e.target.checked) {
+      state.selectedBrands.push(brand);
+      item.classList.add('checked');
+    } else {
+      state.selectedBrands = state.selectedBrands.filter(b => b !== brand);
+      item.classList.remove('checked');
+    }
+    _updateBrandBtn();
     render();
   });
 }
@@ -872,8 +931,9 @@ function initResetBtn() {
     document.getElementById('dateTo').value = state.dateTo;
     document.querySelectorAll('.date-btn').forEach(b =>
       b.classList.toggle('active', b.dataset.days === '0'));
-    document.querySelectorAll('.brand-tag').forEach(t =>
-      t.classList.toggle('active', t.dataset.brand.toUpperCase() === 'JUMISO'));
+    document.getElementById('brandPanelSearch').value = '';
+    _buildBrandList('');
+    _updateBrandBtn();
     render();
   });
 }
