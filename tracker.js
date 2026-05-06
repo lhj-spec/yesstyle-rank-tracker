@@ -73,7 +73,7 @@ async function crawlPage(page, pageNum) {
     });
 
     return items;
-  }, (pageNum - 1) * 60);
+  }, (pageNum - 1) * 100);
 }
 
 async function run() {
