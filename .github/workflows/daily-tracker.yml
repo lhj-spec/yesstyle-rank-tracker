@@ -7,7 +7,9 @@ on:
 
 jobs:
   track:
-    runs-on: ubuntu-latest
+    # ubuntu-latest가 2026-10-19부터 Ubuntu 26으로 전환되면서, 고정된 Playwright(1.59)의
+    # `install --with-deps`가 실패해 10/25부터 매일 죽었다 — 검증된 24.04로 고정.
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
       pages: write
